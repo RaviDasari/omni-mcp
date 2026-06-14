@@ -1,0 +1,16 @@
+{
+  "port": 6317,
+  "servers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "echo",
+      "args": ["hello"]
+    }
+  },
+  "profiles": {
+    "default": { "allow": ["*"] }
+  },
+  "tokens": {
+    "default": { "profile": "default" }
+  }
+}

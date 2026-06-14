@@ -1,0 +1,48 @@
+{
+  "name": "omni-mcp",
+  "version": "0.1.0",
+  "description": "One proxy. All your MCP servers. Every IDE.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "bin": {
+    "omni-mcp": "./dist/cli/index.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit",
+    "start": "node dist/cli/index.js start"
+  },
+  "keywords": ["mcp", "model-context-protocol", "proxy", "gateway", "ai", "cursor", "vscode", "claude"],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaviDasari/omni-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RaviDasari/omni-mcp/issues"
+  },
+  "homepage": "https://github.com/RaviDasari/omni-mcp#readme",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
