@@ -86,3 +86,4 @@
 | [04-transport-bridging.md](./04-transport-bridging.md) | stdio and HTTP upstream transport adapters |
 | [05-resilience.md](./05-resilience.md) | Crash isolation, restart policy, error responses |
 | [06-cli.md](./06-cli.md) | CLI commands, flags, and output format |
+| [07-ide-integration.md](./07-ide-integration.md) | IDE setup, auto-discovery, per-client profiles |

@@ -40,6 +40,223 @@ These flags are accepted by all commands:
 
 ## Commands
 
+### `omni-mcp init`
+
+Interactively scaffolds a new `omni-mcp.config.json` with zero manual JSON editing. Designed for a first-run experience that takes under 30 seconds.
+
+```
+omni-mcp init [options]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--import` | — | Auto-detect and import MCP servers from existing IDE configs (Cursor, VS Code, Claude Desktop) |
+| `--yes` / `-y` | — | Accept all defaults non-interactively (useful for scripts / CI) |
+| `--output <path>` | `./omni-mcp.config.json` | Output path for generated config |
+| `--template <name>` | — | Start from a named template: `minimal`, `multi-agent`, `team` |
+
+#### Interactive Flow
+
+```
+$ npx omni-mcp init
+
+🌐 omni-mcp — Quick Setup
+─────────────────────────
+
+? Found existing MCP configs:
+    ✓ Cursor   (~/.cursor/mcp.json)         — 4 servers
+    ✓ Claude   (~/.claude/claude_desktop_config.json) — 2 servers
+  Import these servers? (Y/n) Y
+
+? Importing servers...
+    ✓ filesystem (stdio)   — from Cursor
+    ✓ github (stdio)       — from Cursor
+    ✓ puppeteer (stdio)    — from Cursor
+    ✓ postgres (stdio)     — from Cursor
+    ✓ web-search (stdio)   — from Claude Desktop
+    ✓ memory (stdio)       — from Claude Desktop
+  Imported 6 servers.
+
+? Create profiles?
+    default    — all servers (allow: ["*"])
+    safe       — filesystem, memory (non-destructive tools)
+  Accept these profiles? (Y/n) Y
+
+? Token setup:
+    default → safe (safe default for unknown agents)
+    cursor  → default (full access for Cursor)
+    claude  → safe (restricted for Claude Desktop)
+  Accept? (Y/n) Y
+
+✅ Config written to ./omni-mcp.config.json
+
+🚀 Next steps:
+   1. Start the proxy:  npx omni-mcp start
+   2. Point your IDE to: http://127.0.0.1:6317/mcp
+      (see: npx omni-mcp ide-snippets)
+```
+
+#### Auto-Discovery Paths
+
+The `--import` flag (or the interactive prompt) scans these known locations:
+
+| IDE / Client | Config Path | Platform |
+|-------------|-------------|----------|
+| Cursor | `~/.cursor/mcp.json` | All |
+| VS Code (Copilot) | `~/.vscode/mcp.json` or workspace `.vscode/mcp.json` | All |
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | macOS |
+| Claude Desktop | `%APPDATA%/Claude/claude_desktop_config.json` | Windows |
+| Claude Desktop | `~/.config/Claude/claude_desktop_config.json` | Linux |
+
+Discovery is best-effort — missing files are silently skipped.
+
+#### Templates
+
+| Template | Description |
+|----------|-------------|
+| `minimal` | 1 server (filesystem), 1 profile, 1 token — simplest working config |
+| `multi-agent` | 3 servers, 2 profiles, per-IDE tokens — typical solo developer |
+| `team` | Example with remote HTTP servers, JWT auth, multiple profiles |
+
+---
+
+### `omni-mcp add`
+
+Adds a server to the config without manually editing JSON.
+
+```
+omni-mcp add <server-name> [options]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--type <type>` | `stdio` | Server type: `stdio` or `http` |
+| `--command <cmd>` | — | Command to spawn (stdio only) |
+| `--args <args...>` | — | Arguments for the command (stdio only) |
+| `--url <url>` | — | Remote MCP server URL (http only) |
+| `--profile <name>` | — | Add server to this profile's allow list. Can be repeated. |
+| `--config <path>` | `./omni-mcp.config.json` | Config file path |
+
+#### Examples
+
+```bash
+# Add a local stdio MCP server
+omni-mcp add github --command npx --args "-y @modelcontextprotocol/server-github" --profile default
+
+# Add from an npx package directly (shorthand)
+omni-mcp add puppeteer --npx "@modelcontextprotocol/server-puppeteer" --profile default
+
+# Add a remote HTTP server
+omni-mcp add prod-api --type http --url "https://api.company.com/mcp" --profile admin
+
+# Add to multiple profiles
+omni-mcp add filesystem --npx "@modelcontextprotocol/server-filesystem /home/user" --profile safe --profile default
+```
+
+#### Shorthand: `--npx`
+
+The `--npx` flag is a convenience shorthand that expands to `--command npx --args "-y <package> [extra-args...]"`. The first token is treated as the package name; any remaining tokens become additional arguments:
+
+```bash
+omni-mcp add github --npx "@modelcontextprotocol/server-github"
+# Equivalent to:
+omni-mcp add github --command npx --args "-y @modelcontextprotocol/server-github"
+
+omni-mcp add filesystem --npx "@modelcontextprotocol/server-filesystem /home/user/docs"
+# Equivalent to:
+omni-mcp add filesystem --command npx --args "-y @modelcontextprotocol/server-filesystem /home/user/docs"
+```
+
+#### Output
+
+```
+[omni-mcp] Added server "github" (stdio) to omni-mcp.config.json
+[omni-mcp] Added "github" to profile "default" allow list.
+[omni-mcp] Tip: Run `omni-mcp reload` to pick up the change in a running instance (see reload command below).
+```
+
+---
+
+### `omni-mcp remove`
+
+Removes a server from the config.
+
+```
+omni-mcp remove <server-name> [--config <path>]
+```
+
+Removes the server entry and removes it from all profile allow lists. Prints what was removed.
+
+---
+
+### `omni-mcp ide-snippets`
+
+Prints copy-paste configuration snippets for pointing popular AI clients at the running omni-mcp gateway.
+
+```
+omni-mcp ide-snippets [--token <name>] [--port <number>]
+```
+
+#### Output
+
+```
+🌐 omni-mcp — IDE Configuration Snippets
+──────────────────────────────────────────
+
+Your gateway: http://127.0.0.1:6317/mcp
+
+━━━ Cursor ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Add to ~/.cursor/mcp.json:
+
+{
+  "mcpServers": {
+    "omni-mcp": {
+      "url": "http://127.0.0.1:6317/mcp",
+      "headers": {
+        "Authorization": "******"
+      }
+    }
+  }
+}
+
+━━━ VS Code (GitHub Copilot) ━━━━━━━━━━━
+Add to .vscode/mcp.json:
+
+{
+  "servers": {
+    "omni-mcp": {
+      "type": "http",
+      "url": "http://127.0.0.1:6317/mcp",
+      "headers": {
+        "Authorization": "******"
+      }
+    }
+  }
+}
+
+━━━ Claude Desktop ━━━━━━━━━━━━━━━━━━━━━
+Add to your Claude Desktop config:
+
+{
+  "mcpServers": {
+    "omni-mcp": {
+      "url": "http://127.0.0.1:6317/mcp",
+      "headers": {
+        "Authorization": "******"
+      }
+    }
+  }
+}
+
+━━━ Any MCP Client (curl test) ━━━━━━━━━
+curl -X POST http://127.0.0.1:6317/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ******" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+---
+
 ### `omni-mcp start`
 
 Starts the proxy gateway daemon in the foreground.
