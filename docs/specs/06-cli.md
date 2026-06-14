@@ -155,12 +155,16 @@ omni-mcp add filesystem --npx "@modelcontextprotocol/server-filesystem /home/use
 
 #### Shorthand: `--npx`
 
-The `--npx` flag is a convenience shorthand that expands to `--command npx --args "-y <package>"`:
+The `--npx` flag is a convenience shorthand that expands to `--command npx --args "-y <package> [extra-args...]"`. The first token is treated as the package name; any remaining tokens become additional arguments:
 
 ```bash
 omni-mcp add github --npx "@modelcontextprotocol/server-github"
 # Equivalent to:
 omni-mcp add github --command npx --args "-y @modelcontextprotocol/server-github"
+
+omni-mcp add filesystem --npx "@modelcontextprotocol/server-filesystem /home/user/docs"
+# Equivalent to:
+omni-mcp add filesystem --command npx --args "-y @modelcontextprotocol/server-filesystem /home/user/docs"
 ```
 
 #### Output
@@ -168,7 +172,7 @@ omni-mcp add github --command npx --args "-y @modelcontextprotocol/server-github
 ```
 [omni-mcp] Added server "github" (stdio) to omni-mcp.config.json
 [omni-mcp] Added "github" to profile "default" allow list.
-[omni-mcp] Tip: Run `omni-mcp reload` to pick up the change in a running instance.
+[omni-mcp] Tip: Run `omni-mcp reload` to pick up the change in a running instance (see reload command below).
 ```
 
 ---
