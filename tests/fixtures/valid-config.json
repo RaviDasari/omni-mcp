@@ -1,0 +1,36 @@
+{
+  "port": 6317,
+  "servers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "echo",
+      "args": ["hello"]
+    },
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "$GITHUB_TOKEN"
+      }
+    },
+    "production-db": {
+      "type": "http",
+      "url": "https://internal.tools/mcp",
+      "auth": {
+        "type": "jwt",
+        "token": "$PROD_DB_JWT"
+      }
+    }
+  },
+  "profiles": {
+    "default": { "allow": ["filesystem"] },
+    "safe-coding": { "allow": ["filesystem", "github"] },
+    "admin": { "allow": ["*"] }
+  },
+  "tokens": {
+    "default": { "profile": "safe-coding" },
+    "cursor": { "profile": "admin" },
+    "claude": { "profile": "safe-coding" }
+  }
+}
