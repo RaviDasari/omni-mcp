@@ -1,5 +1,5 @@
-import { writeFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { resolve, dirname } from "node:path";
 
 interface InitOptions {
   import?: boolean;
@@ -115,6 +115,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
     process.exit(1);
   }
 
+  mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, JSON.stringify(template, null, 2) + "\n");
 
   process.stdout.write(`\n🌐 omni-mcp — Quick Setup\n`);

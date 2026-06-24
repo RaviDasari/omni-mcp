@@ -96,10 +96,14 @@ export class StdioAdapter implements ServerAdapter {
   }
 
   private async spawnProcess(): Promise<void> {
+    // Filter out unresolved $VAR tokens so the child inherits real values from process.env
+    const isResolved = (v: string) => !v.startsWith("$");
+    const configEnv = Object.fromEntries(
+      Object.entries(this.config.env ?? {}).filter(([, v]) => isResolved(v))
+    );
     const processEnv = {
       ...process.env,
-      ...this.env,
-      ...(this.config.env ?? {}),
+      ...configEnv,
     };
 
     this.process = spawn(this.config.command, this.config.args, {

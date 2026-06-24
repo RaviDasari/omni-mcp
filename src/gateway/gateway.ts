@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import type { OmniMcpConfig } from "../config/index.js";
 import { resolveToken, isServerAllowed, getAllowedServers } from "../auth/index.js";
@@ -17,6 +18,7 @@ export class Gateway {
   private server: Server | null = null;
   private logger = new Logger("omni-mcp");
   private startTime = 0;
+  private sseSessions = new Map<string, ServerResponse>();
 
   constructor(options: GatewayOptions) {
     this.config = options.config;
@@ -132,6 +134,9 @@ export class Gateway {
   }
 
   private async handleMcp(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const sessionId = url.searchParams.get("sessionId");
+
     // Authenticate
     const authHeader = req.headers["authorization"] as string | undefined;
     const tokenResult = resolveToken(authHeader, this.config);
@@ -175,21 +180,50 @@ export class Gateway {
 
     // Route the request
     const response = await this.routeRequest(rpcRequest, tokenResult.profileConfig, tokenResult.profile);
+    const jsonRpcResponse = { jsonrpc: "2.0", id: rpcRequest.id, ...response };
 
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ jsonrpc: "2.0", id: rpcRequest.id, ...response }));
+    // If there is an active SSE session, send response over SSE and return 202 Accepted to POST
+    if (sessionId && this.sseSessions.has(sessionId)) {
+      const sseRes = this.sseSessions.get(sessionId);
+      if (sseRes) {
+        sseRes.write(`event: message\ndata: ${JSON.stringify(jsonRpcResponse)}\n\n`);
+      }
+      res.writeHead(202, { "Content-Type": "text/plain" });
+      res.end("Accepted");
+    } else {
+      // Fallback/Direct mode: return response directly in the POST body
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(jsonRpcResponse));
+    }
   }
 
   private handleSse(req: IncomingMessage, res: ServerResponse): void {
-    // SSE placeholder for server→client notifications
+    // Authenticate
+    const authHeader = req.headers["authorization"] as string | undefined;
+    const tokenResult = resolveToken(authHeader, this.config);
+
+    if (tokenResult.status === "rejected") {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+
+    const sessionId = randomUUID();
+
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
     });
-    res.write("data: {\"type\":\"connected\"}\n\n");
+
+    // Write the standard SSE endpoint event to tell client where to send POSTs
+    const postUrl = `/mcp?sessionId=${sessionId}`;
+    res.write(`event: endpoint\ndata: ${postUrl}\n\n`);
+
+    this.sseSessions.set(sessionId, res);
 
     req.on("close", () => {
+      this.sseSessions.delete(sessionId);
       res.end();
     });
   }

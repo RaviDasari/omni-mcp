@@ -6,10 +6,12 @@ import { stopCommand } from "./commands/stop.js";
 import { statusCommand } from "./commands/status.js";
 import { validateCommand } from "./commands/validate.js";
 import { reloadCommand } from "./commands/reload.js";
+import { restartCommand } from "./commands/restart.js";
 import { addCommand } from "./commands/add.js";
 import { removeCommand } from "./commands/remove.js";
 import { ideSnippetsCommand } from "./commands/ide-snippets.js";
 import { initCommand } from "./commands/init.js";
+import { DEFAULT_CONFIG_PATH } from "./config-path.js";
 
 const program = new Command();
 
@@ -20,38 +22,49 @@ program
 
 program
   .command("start")
-  .description("Start the proxy gateway")
-  .option("--config <path>", "Path to config file", "./omni-mcp.config.json")
+  .description("Start the proxy gateway (runs in background by default)")
+  .option("--config <path>", "Path to config file", DEFAULT_CONFIG_PATH)
   .option("--port <number>", "Override the listen port")
   .option("--host <address>", "Override the bind address")
   .option("--profile <name>", "Override default profile")
   .option("--log-level <level>", "Log verbosity: error, warn, info, debug", "info")
+  .option("--foreground", "Run in foreground instead of daemonizing")
   .action(startCommand);
 
 program
   .command("stop")
   .description("Graceful shutdown of running instance")
-  .option("--config <path>", "Path to config file", "./omni-mcp.config.json")
+  .option("--config <path>", "Path to config file", DEFAULT_CONFIG_PATH)
   .action(stopCommand);
 
 program
   .command("status")
   .description("Show current state of running instance")
-  .option("--config <path>", "Path to config file", "./omni-mcp.config.json")
+  .option("--config <path>", "Path to config file", DEFAULT_CONFIG_PATH)
   .option("--json", "Output machine-readable JSON")
   .action(statusCommand);
 
 program
   .command("validate")
   .description("Validate config without starting")
-  .option("--config <path>", "Path to config file", "./omni-mcp.config.json")
+  .option("--config <path>", "Path to config file", DEFAULT_CONFIG_PATH)
   .action(validateCommand);
 
 program
   .command("reload")
   .description("Hot-reload configuration")
-  .option("--config <path>", "Path to config file", "./omni-mcp.config.json")
+  .option("--config <path>", "Path to config file", DEFAULT_CONFIG_PATH)
   .action(reloadCommand);
+
+program
+  .command("restart")
+  .description("Stop the running instance and start it again in the background")
+  .option("--config <path>", "Path to config file", DEFAULT_CONFIG_PATH)
+  .option("--port <number>", "Override the listen port")
+  .option("--host <address>", "Override the bind address")
+  .option("--profile <name>", "Override default profile")
+  .option("--log-level <level>", "Log verbosity: error, warn, info, debug", "info")
+  .action(restartCommand);
 
 program
   .command("add <server-name>")
@@ -62,13 +75,13 @@ program
   .option("--npx <package>", "Shorthand: npx package (expands to --command npx --args)")
   .option("--url <url>", "Remote MCP server URL (http)")
   .option("--profile <name...>", "Add to profile allow list")
-  .option("--config <path>", "Config file path", "./omni-mcp.config.json")
+  .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
   .action(addCommand);
 
 program
   .command("remove <server-name>")
   .description("Remove a server from config")
-  .option("--config <path>", "Config file path", "./omni-mcp.config.json")
+  .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
   .action(removeCommand);
 
 program
@@ -83,7 +96,7 @@ program
   .description("Interactive setup with auto-import")
   .option("--import", "Auto-detect and import from existing IDE configs")
   .option("-y, --yes", "Accept all defaults non-interactively")
-  .option("--output <path>", "Output path for config", "./omni-mcp.config.json")
+  .option("--output <path>", "Output path for config", DEFAULT_CONFIG_PATH)
   .option("--template <name>", "Start from template: minimal, multi-agent, team")
   .action(initCommand);
 

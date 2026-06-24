@@ -5,11 +5,11 @@ import { homedir } from "node:os";
 const PID_DIR = join(homedir(), ".omni-mcp");
 const PID_FILE = process.env["OMNI_MCP_PID_FILE"] ?? join(PID_DIR, "omni-mcp.pid");
 
-export function writePidFile(): void {
+export function writePidFile(pid: number = process.pid): void {
   if (!existsSync(PID_DIR)) {
     mkdirSync(PID_DIR, { recursive: true });
   }
-  writeFileSync(PID_FILE, String(process.pid));
+  writeFileSync(PID_FILE, String(pid));
 }
 
 export function readPidFile(): number | null {

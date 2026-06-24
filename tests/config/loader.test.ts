@@ -31,15 +31,17 @@ describe("Config Loader", () => {
       expect(result.config!.tokens.cursor.profile).toBe("admin");
     });
 
-    it("reports errors for missing env variables", () => {
+    it("reports warnings (not errors) for missing env variables", () => {
       const result = loadConfig(
         resolve(FIXTURES_DIR, "valid-config.json"),
         {}, // no env vars
       );
 
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors.some((e) => e.message.includes("GITHUB_TOKEN"))).toBe(true);
-      expect(result.errors.some((e) => e.message.includes("PROD_DB_JWT"))).toBe(true);
+      // Config still loads — missing env vars are degraded servers, not fatal
+      expect(result.errors).toHaveLength(0);
+      expect(result.config).toBeDefined();
+      expect(result.warnings.some((w) => w.message.includes("GITHUB_TOKEN"))).toBe(true);
+      expect(result.warnings.some((w) => w.message.includes("PROD_DB_JWT"))).toBe(true);
     });
 
     it("reports validation errors for invalid config", () => {

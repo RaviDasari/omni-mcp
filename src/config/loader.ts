@@ -2,6 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { configSchema, type OmniMcpConfig } from "./schema.js";
 import { resolveEnvVariables, formatEnvErrors } from "./env.js";
+import { DEFAULT_CONFIG_PATH } from "../cli/config-path.js";
 
 export interface ValidationError {
   message: string;
@@ -25,7 +26,7 @@ export function loadConfig(
   configPath?: string,
   env?: Record<string, string | undefined>,
 ): LoadConfigResult {
-  const resolvedPath = resolve(configPath ?? "./omni-mcp.config.json");
+  const resolvedPath = resolve(configPath ?? DEFAULT_CONFIG_PATH);
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
 
@@ -46,11 +47,12 @@ export function loadConfig(
     return { errors, warnings };
   }
 
-  // Resolve environment variables
+  // Resolve environment variables — missing vars are warnings, not errors.
+  // Servers with unresolved vars will fail to connect; crash isolation handles the rest.
   const { resolved, errors: envErrors } = resolveEnvVariables(rawConfig, env);
   for (const envErr of envErrors) {
-    errors.push({
-      message: `${envErr.path}: "$${envErr.variable}" is not set in environment`,
+    warnings.push({
+      message: `${envErr.path}: "$${envErr.variable}" is not set — server will be unavailable until the variable is exported`,
     });
   }
 
@@ -61,11 +63,6 @@ export function loadConfig(
       const path = issue.path.join(".");
       errors.push({ message: `${path}: ${issue.message}` });
     }
-    return { errors, warnings };
-  }
-
-  // Don't proceed with cross-validation if there are env errors
-  if (envErrors.length > 0) {
     return { errors, warnings };
   }
 
