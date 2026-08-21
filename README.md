@@ -1,5 +1,9 @@
 # 🌐 omni-mcp
 
+[![CI](https://github.com/RaviDasari/omni-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/RaviDasari/omni-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/omni-mcp-manager.svg)](https://www.npmjs.com/package/omni-mcp-manager)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **One proxy. All your MCP servers. Every IDE.**
 
 Stop copying MCP configs across Cursor, VS Code, Claude Desktop, and Windsurf. omni-mcp gives you a single gateway that consolidates all your MCP servers, applies per-agent access control, and isolates crashes — so one broken server never takes down your entire AI workflow.
@@ -8,13 +12,13 @@ Stop copying MCP configs across Cursor, VS Code, Claude Desktop, and Windsurf. o
 
 ```bash
 # 1. Scaffold your config (auto-imports from your existing IDE MCP configs)
-npx omni-mcp init --import
+npx omni-mcp-manager init --import
 
 # 2. Start the gateway
-npx omni-mcp start
+npx omni-mcp-manager start
 
 # 3. Point your IDE to the gateway (get copy-paste snippets)
-npx omni-mcp ide-snippets
+npx omni-mcp-manager ide-snippets
 ```
 
 That's it. All your AI clients now share a single, managed MCP endpoint at `http://127.0.0.1:6317/mcp`.
@@ -68,13 +72,15 @@ That's it. All your AI clients now share a single, managed MCP endpoint at `http
 ### Install
 
 ```bash
-npm install -g omni-mcp
+npm install -g omni-mcp-manager
 ```
+
+This installs the `omni-mcp` command (`omni-mcp-manager` works as an alias).
 
 Or use without installing:
 
 ```bash
-npx omni-mcp init
+npx omni-mcp-manager init
 ```
 
 ### Import Existing Config
@@ -82,7 +88,7 @@ npx omni-mcp init
 Already using MCP servers in your IDE? Import them all:
 
 ```bash
-npx omni-mcp init --import
+npx omni-mcp-manager init --import
 ```
 
 This scans Cursor, VS Code, and Claude Desktop configs, imports all servers, and generates sensible token/profile defaults.
@@ -209,3 +215,7 @@ Full specs are available in [`docs/specs/`](./docs/specs/):
 - [Resilience](./docs/specs/05-resilience.md)
 - [CLI](./docs/specs/06-cli.md)
 - [IDE Integration](./docs/specs/07-ide-integration.md)
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, Conventional Commits, and how versions are published. This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).

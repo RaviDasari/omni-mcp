@@ -1,8 +1,10 @@
 {
-  "name": "omni-mcp",
+  "name": "omni-mcp-manager",
   "version": "0.1.0",
   "description": "One proxy. All your MCP servers. Every IDE.",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -10,7 +12,15 @@
     }
   },
   "bin": {
-    "omni-mcp": "./dist/cli/index.js"
+    "omni-mcp": "./dist/cli/index.js",
+    "omni-mcp-manager": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -22,10 +32,22 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
-    "start": "node dist/cli/index.js start"
+    "start": "node dist/cli/index.js start",
+    "prepack": "npm run build",
+    "prepare": "husky",
+    "release": "semantic-release"
   },
-  "keywords": ["mcp", "model-context-protocol", "proxy", "gateway", "ai", "cursor", "vscode", "claude"],
-  "author": "",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "proxy",
+    "gateway",
+    "ai",
+    "cursor",
+    "vscode",
+    "claude"
+  ],
+  "author": "Ravi Dasari",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -40,7 +62,13 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
     "@types/node": "^25.9.3",
+    "husky": "^9.1.7",
+    "semantic-release": "^25.0.9",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"

@@ -123,7 +123,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
   process.stdout.write(`✅ Config written to ${outputPath}\n`);
   process.stdout.write(`   Template: ${templateName}\n\n`);
   process.stdout.write(`🚀 Next steps:\n`);
-  process.stdout.write(`   1. Start the proxy:  npx omni-mcp start\n`);
+  process.stdout.write(`   1. Start the proxy:  omni-mcp start\n`);
   process.stdout.write(`   2. Point your IDE to: http://127.0.0.1:6317/mcp\n`);
-  process.stdout.write(`      (see: npx omni-mcp ide-snippets)\n\n`);
+  process.stdout.write(`      (see: omni-mcp ide-snippets)\n\n`);
 }

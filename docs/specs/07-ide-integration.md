@@ -13,7 +13,7 @@ Today, a developer managing MCP servers across multiple IDEs maintains **N confi
 With omni-mcp:
 - **One config file** defines all servers.
 - **One URL** replaces all per-IDE server entries.
-- **One command** (`npx omni-mcp start`) runs everything.
+- **One command** (`npx omni-mcp-manager start`) runs everything.
 
 ```
 Before:  Cursor config ← 5 servers, VS Code config ← 5 servers, Claude ← 5 servers  (15 entries to maintain)
@@ -155,7 +155,7 @@ The unique value of omni-mcp is giving each IDE/agent its own view of available 
 
 ## Auto-Setup Flow
 
-The ideal first-run experience (`npx omni-mcp init --import`):
+The ideal first-run experience (`npx omni-mcp-manager init --import`):
 
 ```
 1. Detects existing MCP configs in all IDEs
@@ -173,7 +173,7 @@ When passed to `omni-mcp init`, the CLI will:
 3. Print the changes made and backup locations.
 
 ```
-$ npx omni-mcp init --import --write-ide-configs
+$ npx omni-mcp-manager init --import --write-ide-configs
 
 ...
 📝 Updated IDE configs:
@@ -216,7 +216,7 @@ Expected response includes `serverInfo.name: "omni-mcp"` and aggregated capabili
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| IDE shows "connection refused" | omni-mcp not running | Run `npx omni-mcp start` |
+| IDE shows "connection refused" | omni-mcp not running | Run `omni-mcp start` |
 | IDE shows "unauthorized" | Token not in config | Add the token to `omni-mcp.config.json` or use `default` |
 | Tools not appearing | Wrong profile for token | Check `omni-mcp status` and adjust token→profile mapping |
 | Only some tools showing | Profile restricts access | Edit the profile's `allow` list or switch to `["*"]` |

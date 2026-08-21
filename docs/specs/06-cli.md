@@ -11,14 +11,14 @@ omni-mcp provides a command-line interface (CLI) as the primary user-facing inte
 The CLI is installed as a global npm binary:
 
 ```bash
-npm install -g omni-mcp
+npm install -g omni-mcp-manager
 omni-mcp --version
 ```
 
 Or run without installing:
 
 ```bash
-npx omni-mcp start
+npx omni-mcp-manager start
 ```
 
 The entry point is the `omni-mcp` binary defined in `package.json#bin`.
@@ -58,7 +58,7 @@ omni-mcp init [options]
 #### Interactive Flow
 
 ```
-$ npx omni-mcp init
+$ npx omni-mcp-manager init
 
 🌐 omni-mcp — Quick Setup
 ─────────────────────────
@@ -91,9 +91,9 @@ $ npx omni-mcp init
 ✅ Config written to ./omni-mcp.config.json
 
 🚀 Next steps:
-   1. Start the proxy:  npx omni-mcp start
+   1. Start the proxy:  omni-mcp start
    2. Point your IDE to: http://127.0.0.1:6317/mcp
-      (see: npx omni-mcp ide-snippets)
+      (see: omni-mcp ide-snippets)
 ```
 
 #### Auto-Discovery Paths
