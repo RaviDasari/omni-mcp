@@ -6,7 +6,7 @@ Please also follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Prerequisites
 
-- **Node.js 20** or later (`engines.node` is `>=20.0.0`)
+- **Node.js 22.12** or later (`engines.node` is `>=22.12.0`)
 - npm (comes with Node)
 
 ```bash
