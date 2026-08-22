@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/RaviDasari/omni-mcp/compare/v1.0.0...v1.1.0) (2026-08-22)
+
+
+### Features
+
+* add local web UI, traffic logs, and MCP playground ([7f240b3](https://github.com/RaviDasari/omni-mcp/commit/7f240b36a260de33552a4f767a798cb0dba43008))
+
 # 1.0.0 (2026-08-21)
 
 
