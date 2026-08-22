@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/RaviDasari/omni-mcp/compare/v1.1.0...v1.2.0) (2026-08-22)
+
+
+### Features
+
+* add managed secrets, CLI tool access, and Keychain-backed stores ([66ac911](https://github.com/RaviDasari/omni-mcp/commit/66ac911492aa877ec7e050266d4ba2b5d2e6a434))
+
 # [1.1.0](https://github.com/RaviDasari/omni-mcp/compare/v1.0.0...v1.1.0) (2026-08-22)
 
 
