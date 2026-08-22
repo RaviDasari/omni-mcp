@@ -36,6 +36,7 @@ interface ServerForm {
   url: string;
   authToken: string;
   enabled: boolean;
+  cliEnabled: boolean;
 }
 
 const emptyForm: ServerForm = {
@@ -47,6 +48,7 @@ const emptyForm: ServerForm = {
   url: "",
   authToken: "",
   enabled: true,
+  cliEnabled: false,
 };
 
 function parseEnv(text: string): Record<string, string> | undefined {
@@ -79,6 +81,7 @@ function serverToForm(name: string, server: ServerConfig): ServerForm {
       url: "",
       authToken: "",
       enabled: server.enabled !== false,
+      cliEnabled: server.cli?.enabled === true,
     };
   }
 
@@ -91,12 +94,18 @@ function serverToForm(name: string, server: ServerConfig): ServerForm {
     url: server.url,
     authToken: server.auth?.token ?? "",
     enabled: server.enabled !== false,
+    cliEnabled: server.cli?.enabled === true,
   };
 }
 
 function toServerConfig(form: ServerForm): ServerConfig {
   if (form.type === "http") {
-    const server: HttpServerConfig = { type: "http", enabled: form.enabled, url: form.url };
+    const server: HttpServerConfig = {
+      type: "http",
+      enabled: form.enabled,
+      cli: { enabled: form.cliEnabled },
+      url: form.url,
+    };
     if (form.authToken) {
       server.auth = { type: "jwt", token: form.authToken };
     }
@@ -105,6 +114,7 @@ function toServerConfig(form: ServerForm): ServerConfig {
   const server: StdioServerConfig = {
     type: "stdio",
     enabled: form.enabled,
+    cli: { enabled: form.cliEnabled },
     command: form.command,
     args: form.args.split(/\s+/).filter(Boolean),
   };
@@ -461,7 +471,7 @@ export default function ServersPage() {
                       />
                     </div>
                     <div className="grid gap-1">
-                      <Label htmlFor="env">Env (KEY=value per line). Existing values stay if left as ********.</Label>
+                      <Label htmlFor="env">Env (KEY=value per line). Prefer $NAME references managed on the Secrets page.</Label>
                       <Textarea
                         id="env"
                         value={form.env}
@@ -476,7 +486,7 @@ export default function ServersPage() {
                       <Input id="url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
                     </div>
                     <div className="grid gap-1">
-                      <Label htmlFor="jwt">JWT (leave ******** to keep)</Label>
+                      <Label htmlFor="jwt">JWT (use $NAME from Secrets; leave ******** to keep a literal)</Label>
                       <Input
                         id="jwt"
                         value={form.authToken}

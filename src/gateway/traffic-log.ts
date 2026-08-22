@@ -16,6 +16,7 @@ const ROTATION_INTERVAL_MS = 15 * 60 * 1000;
 
 export interface TrafficLogEvent {
   ts: string;
+  source: "mcp" | "cli";
   token: string;
   profile: string;
   server: string;
@@ -29,6 +30,7 @@ export interface TrafficLogEvent {
 export interface TrafficLogFilters {
   from: number;
   to: number;
+  source?: "mcp" | "cli";
   token?: string;
   profile?: string;
   server?: string;
@@ -40,7 +42,7 @@ export interface TrafficLogQuery extends TrafficLogFilters {
   limit: number;
 }
 
-export type TrafficLogGroupBy = "tool" | "server" | "token" | "profile";
+export type TrafficLogGroupBy = "tool" | "server" | "source" | "token" | "profile";
 
 export interface TrafficLogGroup {
   key: string;
@@ -191,8 +193,10 @@ export class TrafficLog {
       for (const line of content.split("\n")) {
         if (!line) continue;
         try {
-          const parsed = JSON.parse(line) as TrafficLogEvent;
-          if (isTrafficLogEvent(parsed)) events.push(parsed);
+          const parsed = JSON.parse(line) as TrafficLogEvent & { source?: "mcp" | "cli" };
+          if (isTrafficLogEvent(parsed)) {
+            events.push({ ...parsed, source: parsed.source ?? "mcp" });
+          }
         } catch {
           // Ignore a partial final line left by an interrupted append.
         }
@@ -270,6 +274,7 @@ function matches(event: TrafficLogEvent, filters: TrafficLogFilters): boolean {
   return (
     time >= filters.from &&
     time <= filters.to &&
+    (filters.source === undefined || event.source === filters.source) &&
     (filters.token === undefined || event.token === filters.token) &&
     (filters.profile === undefined || event.profile === filters.profile) &&
     (filters.server === undefined || event.server === filters.server) &&
@@ -280,6 +285,7 @@ function matches(event: TrafficLogEvent, filters: TrafficLogFilters): boolean {
 function isTrafficLogEvent(value: TrafficLogEvent): boolean {
   return (
     typeof value?.ts === "string" &&
+    (value.source === undefined || value.source === "mcp" || value.source === "cli") &&
     typeof value.token === "string" &&
     typeof value.profile === "string" &&
     typeof value.server === "string" &&

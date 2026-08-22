@@ -127,6 +127,11 @@ Create `omni-mcp.config.json`:
 }
 ```
 
+Exact `$NAME` or `${NAME}` strings are filled from the process environment first, then from the
+active secret store — `~/.config/omni-mcp/secrets.json` by default, or the macOS Keychain backend.
+Values are write-only and never returned by the API. See
+[Managed secrets](./docs/specs/11-managed-secrets.md).
+
 ### Add Servers Without Editing JSON
 
 ```bash
@@ -199,6 +204,20 @@ Give your CI bot its own token with access only to deployment tools:
 | `omni-mcp reload` | Hot-reload tokens and profiles without restart |
 | `omni-mcp validate` | Check config validity (great for CI/pre-commit) |
 | `omni-mcp ide-snippets` | Print IDE-specific setup snippets |
+| `omni-mcp cli <server> <tool>` | Discover and invoke tools from CLI-enabled MCP servers |
+| `omni-mcp cli install-skill` | Teach Cursor and Claude to use the managed CLI |
+| `omni-mcp secrets …` | Write-only secret store (`list`, `set`, `delete`, `sync`, `import-keychain`, `migrate`) |
+
+### Install the agent skill
+
+Install the bundled skill user-wide for both Cursor and Claude:
+
+```bash
+omni-mcp cli install-skill
+```
+
+Use `--target cursor|claude|all`, `--scope user|project`, or `--force` to customize installation.
+Start a new agent session after installation so the skill is discovered.
 
 ## 🎯 Target Scope & Roadmap
 
@@ -220,6 +239,8 @@ Full specs are available in [`docs/specs/`](./docs/specs/):
 - [IDE Integration](./docs/specs/07-ide-integration.md)
 - [Web UI](./docs/specs/08-web-ui.md)
 - [Traffic logs](./docs/specs/09-traffic-logs.md)
+- [Managed MCP CLI](./docs/specs/10-managed-cli.md)
+- [Managed secrets](./docs/specs/11-managed-secrets.md)
 
 ## Contributing
 

@@ -69,6 +69,18 @@ function makeConfig(): OmniMcpConfig {
         callTimeoutMs: 60000,
         hangThreshold: 3,
       },
+      referenced: {
+        type: "stdio",
+        enabled: false,
+        cli: { enabled: false },
+        command: "echo",
+        args: [],
+        env: { TOKEN: "$LOCKED_SECRET" },
+        maxRestarts: 3,
+        restartBackoffMs: 1000,
+        callTimeoutMs: 60000,
+        hangThreshold: 3,
+      },
     },
     profiles: {
       default: { allow: ["filesystem"] },
@@ -78,6 +90,7 @@ function makeConfig(): OmniMcpConfig {
     },
     security: { unknownTokenPolicy: "fallback-to-default" },
     trafficLog: { enabled: true, retentionDays: 7, maxBytes: 5242880 },
+    secretStore: { backend: "file", keychainService: "omni-mcp" },
   };
 }
 
@@ -97,6 +110,7 @@ describe("Management API", () => {
       adapters,
       configPath,
       trafficLogDir: join(dir, "traffic"),
+      secretStoreOptions: { filePath: join(dir, "secrets.json") },
       version: "0.1.0",
       onSaveConfig: async (next) => {
         writeConfig(configPath, next);
@@ -136,6 +150,46 @@ describe("Management API", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { config: OmniMcpConfig };
     expect(body.config.servers.filesystem).toBeDefined();
+    const referenced = body.config.servers.referenced;
+    expect(referenced.type === "stdio" && referenced.env?.TOKEN).toBe("$LOCKED_SECRET");
+  });
+
+  it("manages write-only secret metadata without returning values", async () => {
+    const saved = await fetch(`${baseUrl}/api/secrets/API_SECRET`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: "super-secret-value" }),
+    });
+    expect(saved.status).toBe(200);
+    const savedText = await saved.text();
+    expect(savedText).not.toContain("super-secret-value");
+
+    const listed = await fetch(`${baseUrl}/api/secrets`);
+    expect(listed.status).toBe(200);
+    const listedText = await listed.text();
+    expect(listedText).not.toContain("super-secret-value");
+    expect(JSON.parse(listedText).secrets).toContainEqual(
+      expect.objectContaining({ name: "API_SECRET", set: true }),
+    );
+
+    const deleted = await fetch(`${baseUrl}/api/secrets/API_SECRET`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+  });
+
+  it("rejects deletion of a referenced secret with usage metadata", async () => {
+    const saved = await fetch(`${baseUrl}/api/secrets/LOCKED_SECRET`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: "locked-value" }),
+    });
+    expect(saved.status).toBe(200);
+
+    const deleted = await fetch(`${baseUrl}/api/secrets/LOCKED_SECRET`, { method: "DELETE" });
+    expect(deleted.status).toBe(409);
+    const body = (await deleted.json()) as { usages: Array<{ path: string }> };
+    expect(body.usages).toContainEqual(
+      expect.objectContaining({ path: "servers.referenced.env.TOKEN" }),
+    );
   });
 
   it("PUT /api/profiles/:name adds a profile", async () => {
@@ -246,6 +300,80 @@ describe("Management API", () => {
     });
   });
 
+  it("requires CLI opt-in, persists it, and exposes CLI tools and calls", async () => {
+    const denied = await fetch(`${baseUrl}/api/cli/servers/filesystem/tools`);
+    expect(denied.status).toBe(403);
+
+    const enabled = await fetch(`${baseUrl}/api/servers/filesystem/cli-enabled`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(enabled.status).toBe(200);
+    const enabledBody = (await enabled.json()) as { config: OmniMcpConfig };
+    expect(enabledBody.config.servers.filesystem.cli.enabled).toBe(true);
+
+    const persisted = JSON.parse(readFileSync(configPath, "utf-8")) as OmniMcpConfig;
+    expect(persisted.servers.filesystem.cli.enabled).toBe(true);
+
+    const servers = await fetch(`${baseUrl}/api/cli/servers`);
+    expect(servers.status).toBe(200);
+    await expect(servers.json()).resolves.toMatchObject({
+      servers: [
+        {
+          name: "filesystem",
+          cliEnabled: true,
+          status: "connected",
+          toolCount: 3,
+        },
+      ],
+    });
+
+    const tools = await fetch(`${baseUrl}/api/cli/servers/filesystem/tools`);
+    expect(tools.status).toBe(200);
+    const toolsBody = (await tools.json()) as { tools: Tool[] };
+    expect(toolsBody.tools[0]?.name).toBe("search_orgs");
+
+    const call = await fetch(`${baseUrl}/api/cli/servers/filesystem/tools/call`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tool: "search_orgs", arguments: { query: "cli" } }),
+    });
+    expect(call.status).toBe(200);
+    const callBody = (await call.json()) as { result: ToolResult };
+    expect(callBody.result.content[0]?.text).toBe('{"query":"cli"}');
+
+    const upstreamError = await fetch(`${baseUrl}/api/cli/servers/filesystem/tools/call`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tool: "upstream_error", arguments: { secret: "not-logged" } }),
+    });
+    expect(upstreamError.status).toBe(200);
+
+    const cliLogs = await fetch(`${baseUrl}/api/traffic-logs?source=cli`);
+    expect(cliLogs.status).toBe(200);
+    const cliLogBody = (await cliLogs.json()) as {
+      total: number;
+      events: Array<Record<string, unknown>>;
+    };
+    expect(cliLogBody.total).toBe(2);
+    expect(cliLogBody.events).toEqual(expect.arrayContaining([expect.objectContaining({
+      source: "cli",
+      token: "",
+      profile: "",
+      server: "filesystem",
+      tool: "search_orgs",
+      outcome: "ok",
+    }), expect.objectContaining({
+      source: "cli",
+      server: "filesystem",
+      tool: "upstream_error",
+      outcome: "error",
+    })]));
+    expect(JSON.stringify(cliLogBody)).not.toContain('"query":"cli"');
+    expect(JSON.stringify(cliLogBody)).not.toContain("not-logged");
+  });
+
   it("rejects direct tool APIs from non-loopback clients", async () => {
     let status = 0;
     let body = "";
@@ -275,6 +403,52 @@ describe("Management API", () => {
     });
   });
 
+  it("rejects CLI APIs from non-loopback clients", async () => {
+    let status = 0;
+    const req = {
+      method: "GET",
+      socket: { remoteAddress: "192.0.2.10" },
+    };
+    const res = {
+      writeHead(code: number) {
+        status = code;
+      },
+      end() {},
+    };
+    const api = gateway as unknown as {
+      handleApi(
+        request: typeof req,
+        response: typeof res,
+        url: URL,
+      ): Promise<void>;
+    };
+    await api.handleApi(req, res, new URL(`${baseUrl}/api/cli/servers`));
+    expect(status).toBe(403);
+  });
+
+  it("rejects secret metadata APIs from non-loopback clients", async () => {
+    let status = 0;
+    const req = {
+      method: "GET",
+      socket: { remoteAddress: "192.0.2.10" },
+    };
+    const res = {
+      writeHead(code: number) {
+        status = code;
+      },
+      end() {},
+    };
+    const api = gateway as unknown as {
+      handleApi(
+        request: typeof req,
+        response: typeof res,
+        url: URL,
+      ): Promise<void>;
+    };
+    await api.handleApi(req, res, new URL(`${baseUrl}/api/secrets`));
+    expect(status).toBe(403);
+  });
+
   it("records tool-call metadata and serves list and grouped APIs", async () => {
     const call = await fetch(`${baseUrl}/mcp`, {
       method: "POST",
@@ -294,7 +468,9 @@ describe("Management API", () => {
     });
     expect(call.status).toBe(200);
 
-    const list = await fetch(`${baseUrl}/api/traffic-logs?token=default&server=filesystem`);
+    const list = await fetch(
+      `${baseUrl}/api/traffic-logs?source=mcp&token=default&server=filesystem`,
+    );
     expect(list.status).toBe(200);
     const listBody = (await list.json()) as {
       events: Array<Record<string, unknown>>;
@@ -302,6 +478,7 @@ describe("Management API", () => {
     };
     expect(listBody.total).toBe(1);
     expect(listBody.events[0]).toMatchObject({
+      source: "mcp",
       token: "default",
       profile: "default",
       server: "filesystem",
@@ -310,7 +487,9 @@ describe("Management API", () => {
     });
     expect(JSON.stringify(listBody)).not.toContain("must-not-be-logged");
 
-    const summary = await fetch(`${baseUrl}/api/traffic-logs/summary?groupBy=tool`);
+    const summary = await fetch(
+      `${baseUrl}/api/traffic-logs/summary?source=mcp&groupBy=tool`,
+    );
     expect(summary.status).toBe(200);
     const summaryBody = (await summary.json()) as {
       totalEvents: number;
@@ -346,6 +525,8 @@ describe("Management API", () => {
   it("validates traffic log query parameters and clears records", async () => {
     const invalid = await fetch(`${baseUrl}/api/traffic-logs?limit=201`);
     expect(invalid.status).toBe(400);
+    const invalidSource = await fetch(`${baseUrl}/api/traffic-logs?source=playground`);
+    expect(invalidSource.status).toBe(400);
 
     const cleared = await fetch(`${baseUrl}/api/traffic-logs`, { method: "DELETE" });
     expect(cleared.status).toBe(200);

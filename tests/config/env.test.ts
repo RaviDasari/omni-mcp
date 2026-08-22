@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { resolveEnvVariables, formatEnvErrors } from "../../src/config/env.js";
 
 describe("Environment Variable Resolution", () => {
@@ -16,6 +16,34 @@ describe("Environment Variable Resolution", () => {
       const { resolved, errors } = resolveEnvVariables(config, env);
       expect(errors).toHaveLength(0);
       expect((resolved as any).servers.api.auth.token).toBe("secret123");
+    });
+
+    it("resolves both exact reference syntaxes from the secret store", () => {
+      const secrets = { get: (name: string) => ({ TOKEN: "stored" })[name] };
+      const { resolved, errors } = resolveEnvVariables(
+        { bare: "$TOKEN", braced: "${TOKEN}" },
+        {},
+        secrets,
+      );
+
+      expect(errors).toEqual([]);
+      expect(resolved).toEqual({ bare: "stored", braced: "stored" });
+    });
+
+    it("prefers a non-empty process environment value over the secret store", () => {
+      const secrets = { get: vi.fn(() => "stored") };
+      const { resolved } = resolveEnvVariables({ value: "$TOKEN" }, { TOKEN: "environment" }, secrets);
+
+      expect(resolved.value).toBe("environment");
+      expect(secrets.get).not.toHaveBeenCalled();
+    });
+
+    it("does not expand references embedded in strings", () => {
+      const config = { prefix: "Bearer $TOKEN", suffix: "${TOKEN}/path" };
+      const { resolved, errors } = resolveEnvVariables(config, { TOKEN: "secret" });
+
+      expect(errors).toEqual([]);
+      expect(resolved).toEqual(config);
     });
 
     it("reports error for missing env variable", () => {

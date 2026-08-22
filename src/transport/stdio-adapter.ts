@@ -151,11 +151,21 @@ export class StdioAdapter implements ServerAdapter {
     // Send initialized notification
     this.sendNotification("notifications/initialized", {});
 
-    // Fetch tools
-    const toolsResult = (await this.sendRequest("tools/list", {})) as {
-      tools: Tool[];
-    };
-    this.tools = toolsResult.tools ?? [];
+    // Fetch every page before publishing the cached catalog.
+    const tools: Tool[] = [];
+    let cursor: string | undefined;
+    do {
+      const toolsResult = (await this.sendRequest(
+        "tools/list",
+        cursor ? { cursor } : {},
+      )) as {
+        tools?: Tool[];
+        nextCursor?: string;
+      };
+      tools.push(...(toolsResult.tools ?? []));
+      cursor = toolsResult.nextCursor || undefined;
+    } while (cursor);
+    this.tools = tools;
   }
 
   private sendRequest(method: string, params: unknown): Promise<unknown> {

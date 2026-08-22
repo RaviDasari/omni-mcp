@@ -23,12 +23,12 @@ function createMockMcpServer(): { server: Server; port: number; start: () => Pro
         res.end(JSON.stringify({ jsonrpc: "2.0" }));
         return;
       } else if (msg.method === "tools/list") {
-        result = {
-          tools: [
-            { name: "query", description: "Run a query" },
-            { name: "status", description: "Check status" },
-          ],
-        };
+        result = msg.params?.cursor === "page-2"
+          ? { tools: [{ name: "status", description: "Check status" }] }
+          : {
+              tools: [{ name: "query", description: "Run a query" }],
+              nextCursor: "page-2",
+            };
       } else if (msg.method === "tools/call") {
         result = {
           content: [{ type: "text", text: `Executed ${msg.params.name}` }],

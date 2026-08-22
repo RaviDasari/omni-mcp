@@ -30,6 +30,7 @@ describe("Config Schema", () => {
           retentionDays: 7,
           maxBytes: 5242880,
         });
+        expect(result.data.servers.filesystem.cli).toEqual({ enabled: false });
       }
     });
 
@@ -42,6 +43,7 @@ describe("Config Schema", () => {
         servers: {
           filesystem: {
             type: "stdio",
+            cli: { enabled: true },
             command: "npx",
             args: ["-y", "@modelcontextprotocol/server-filesystem", "/docs"],
             maxRestarts: 5,
@@ -85,6 +87,7 @@ describe("Config Schema", () => {
         expect(result.data.host).toBe("0.0.0.0");
         expect(result.data.security.unknownTokenPolicy).toBe("reject");
         expect(result.data.trafficLog.retentionDays).toBe(14);
+        expect(result.data.servers.filesystem.cli.enabled).toBe(true);
       }
     });
 

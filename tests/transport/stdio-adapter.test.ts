@@ -61,7 +61,9 @@ describe("StdioAdapter", () => {
             process.stdout.write(JSON.stringify({
               jsonrpc: '2.0',
               id: msg.id,
-              result: { tools: [{ name: 'hello', description: 'Says hello' }] }
+              result: msg.params.cursor === 'page-2'
+                ? { tools: [{ name: 'goodbye', description: 'Says goodbye' }] }
+                : { tools: [{ name: 'hello', description: 'Says hello' }], nextCursor: 'page-2' }
             }) + '\\n');
           } else if (msg.method === 'tools/call') {
             process.stdout.write(JSON.stringify({
@@ -82,8 +84,9 @@ describe("StdioAdapter", () => {
       expect(adapter.status).toBe("connected");
 
       const tools = await adapter.listTools();
-      expect(tools).toHaveLength(1);
+      expect(tools).toHaveLength(2);
       expect(tools[0].name).toBe("hello");
+      expect(tools[1].name).toBe("goodbye");
 
       const result = await adapter.callTool("hello", { name: "Alice" });
       expect(result.content[0].text).toBe("Hello Alice");

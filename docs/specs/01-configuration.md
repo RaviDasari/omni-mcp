@@ -2,7 +2,7 @@
 
 ## Overview
 
-All runtime behavior is driven by a single JSON configuration file: `omni-mcp.config.json`. The file defines the upstream MCP server fleet, named profiles, and token credentials. This document specifies the schema, validation rules, and environment variable resolution behavior.
+All runtime behavior is driven by a single JSON configuration file: `omni-mcp.config.json`. The file defines the upstream MCP server fleet, named profiles, and token credentials. This document specifies the schema, validation rules, and variable-reference resolution. Secret **values** live in a separate store; see [11-managed-secrets.md](./11-managed-secrets.md).
 
 ---
 
@@ -32,7 +32,11 @@ All runtime behavior is driven by a single JSON configuration file: `omni-mcp.co
   "profiles": { /* see Profiles section */ },
 
   // Required. At least a "default" token must be defined.
-  "tokens": { /* see Tokens section — see spec 02-token-auth.md */ }
+  "tokens": { /* see Tokens section — see spec 02-token-auth.md */ },
+
+  // Optional. Default: file backend at ~/.config/omni-mcp/secrets.json (path is not configurable).
+  // See spec 11-managed-secrets.md
+  "secretStore": { "backend": "file", "keychainService": "omni-mcp" }
 }
 ```
 
@@ -53,6 +57,9 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
       // Optional. Globally expose/start this server. Default: true.
       "enabled": true,
 
+      // Optional. Expose this server through `omni-mcp cli`. Default: false.
+      "cli": { "enabled": false },
+
       // Required. Executable name or path.
       "command": "npx",
 
@@ -66,7 +73,7 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
       "cwd": "/home/user",
 
       // Optional. Additional environment variables for the child process.
-      // Supports $VAR_NAME interpolation.
+      // Exact $NAME or ${NAME} references (see Environment Variable Resolution).
       "env": {
         "MY_API_KEY": "$MY_API_KEY"
       }
@@ -86,6 +93,9 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
       // Optional. Globally expose/connect to this server. Default: true.
       "enabled": true,
 
+      // Optional. Expose this server through `omni-mcp cli`. Default: false.
+      "cli": { "enabled": false },
+
       // Required. Full base URL of the remote MCP server.
       "url": "https://internal.tools/mcp",
 
@@ -95,7 +105,8 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
         "type": "jwt",
 
         // Required when type is "jwt".
-        // Must be an environment variable reference ($VAR_NAME).
+        // Prefer an exact $NAME or ${NAME} reference. Literals are accepted so they can
+        // be migrated into the secret store (see spec 11-managed-secrets.md).
         "token": "$PROD_DB_JWT"
       },
 
@@ -144,14 +155,23 @@ Profiles define which servers a client can access. See [02-token-auth.md](./02-t
 
 ## Environment Variable Resolution
 
-Any config string value starting with `$` (e.g., `"$MY_JWT_TOKEN"`) is resolved to `process.env[VAR_NAME]` at startup.
+Any config string value that is **exactly** `$NAME` or `${NAME}` is a reference. Lookup is
+`process.env[NAME]` when non-empty, then the active secret store (`secretStore.backend`, default
+file `~/.config/omni-mcp/secrets.json`). Full store, syntax, CLI, API, and UI contracts:
+[11-managed-secrets.md](./11-managed-secrets.md).
 
 ### Rules
 
-1. Resolution is applied to: `servers.*.env.*`, `servers.*.auth.token`, and any `$`-prefixed string value in the config.
-2. If the referenced environment variable is **not set or is empty**, startup fails with an error message identifying the missing variable and its config path.
-3. Resolved secret values are **never logged**, written to disk, or included in `omni-mcp status` output.
-4. Literal `$` characters that are not environment variable references must be escaped as `$$`.
+1. Resolution walks every JSON **string** in the config (including `servers.*.env.*` and
+   `servers.*.auth.token`). A string is a reference only when it is exactly `$NAME` or `${NAME}`
+   with `NAME` matching `^[A-Za-z_][A-Za-z0-9_]*$`. Embedded forms such as `Bearer-$TOKEN` are
+   left unchanged.
+2. If the name is unset or empty in **both** `process.env` and the active store, config load fails
+   with an error identifying the missing variable and its config path.
+3. The on-disk config keeps the raw `$NAME` / `${NAME}` strings. Resolved values are **never
+   logged**, written back to the config file, or included in `omni-mcp status` / `/api` output.
+4. A string that starts with `$$` is not a reference: the leading `$$` becomes a single `$` and
+   the rest is kept as-is.
 
 ### Example
 
@@ -170,11 +190,12 @@ Any config string value starting with `$` (e.g., `"$MY_JWT_TOKEN"`) is resolved 
 }
 ```
 
-At startup, `$MY_API_JWT` is replaced with `process.env.MY_API_JWT`. If `MY_API_JWT` is not set, the process exits with:
+At startup, `$MY_API_JWT` is replaced from `process.env.MY_API_JWT` if that value is non-empty,
+otherwise from the active secret store. If both are missing or empty, the process exits with:
 
 ```
-[omni-mcp] ERROR: Config validation failed.
-  servers.my-api.auth.token references "$MY_API_JWT" but the environment variable MY_API_JWT is not set.
+[omni-mcp] ERROR: Config validation failed (1 error(s)):
+  1. servers.my-api.auth.token: neither the process environment nor the active secret store defines "MY_API_JWT"
 ```
 
 ---
@@ -193,7 +214,7 @@ Error format:
 [omni-mcp] ERROR: Config validation failed (3 error(s)):
   1. servers.filesystem.command: required field missing
   2. profiles.bad-profile.allow: unknown server "nonexistent-server"
-  3. servers.my-api.auth.token: "$MY_API_JWT" is not set in environment
+  3. servers.my-api.auth.token: neither the process environment nor the active secret store defines "MY_API_JWT"
 ```
 
 ### Warnings (non-fatal)

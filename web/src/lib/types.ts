@@ -1,6 +1,7 @@
 export interface StdioServerConfig {
   type: "stdio";
   enabled?: boolean;
+  cli?: { enabled?: boolean };
   command: string;
   args?: string[];
   env?: Record<string, string>;
@@ -14,6 +15,7 @@ export interface StdioServerConfig {
 export interface HttpServerConfig {
   type: "http";
   enabled?: boolean;
+  cli?: { enabled?: boolean };
   url: string;
   auth?: { type: "jwt"; token: string };
   timeoutMs?: number;
@@ -48,6 +50,30 @@ export interface OmniMcpConfig {
     retentionDays: number;
     maxBytes: number;
   };
+  secretStore: {
+    backend: "file" | "keychain";
+    keychainService: string;
+  };
+}
+
+export interface SecretUsage {
+  path: string;
+  server?: string;
+}
+
+export interface SecretMetadata {
+  name: string;
+  set: boolean;
+  usages: SecretUsage[];
+}
+
+export interface SecretsResponse {
+  backend: "file" | "keychain";
+  path?: string;
+  keychainService?: string;
+  keychainSupported: boolean;
+  count?: number;
+  secrets: SecretMetadata[];
 }
 
 export interface HealthPayload {
@@ -60,8 +86,23 @@ export interface HealthPayload {
   defaultProfile: string;
   servers: Record<
     string,
-    { enabled: boolean; status: string; transport: string; restarts: number }
+    {
+      enabled: boolean;
+      cliEnabled: boolean;
+      status: string;
+      transport: string;
+      restarts: number;
+    }
   >;
+}
+
+export interface CliServerSummary {
+  name: string;
+  transport: string;
+  enabled: boolean;
+  cliEnabled: boolean;
+  status: string;
+  toolCount: number;
 }
 
 export interface McpTool {
@@ -106,6 +147,7 @@ export interface IdeSnippetsResult {
 
 export interface TrafficLogEvent {
   ts: string;
+  source: "mcp" | "cli";
   token: string;
   profile: string;
   server: string;
@@ -122,7 +164,7 @@ export interface TrafficLogListResponse {
   dropped: number;
 }
 
-export type TrafficLogGroupBy = "tool" | "server" | "token" | "profile";
+export type TrafficLogGroupBy = "tool" | "server" | "source" | "token" | "profile";
 
 export interface TrafficLogSummaryResponse {
   groupBy: TrafficLogGroupBy;

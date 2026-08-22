@@ -1,4 +1,5 @@
 import type {
+  CliServerSummary,
   HealthPayload,
   IdeSnippetsResult,
   OmniMcpConfig,
@@ -6,6 +7,7 @@ import type {
   ServerConfig,
   ServerToolCallResponse,
   ServerToolsResponse,
+  SecretsResponse,
   TokenConfig,
   TrafficLogGroupBy,
   TrafficLogListResponse,
@@ -64,6 +66,20 @@ export function setServerEnabled(
   });
 }
 
+export function setServerCliEnabled(
+  name: string,
+  enabled: boolean,
+): Promise<{ config: OmniMcpConfig; health: HealthPayload }> {
+  return request(`/api/servers/${encodeURIComponent(name)}/cli-enabled`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export function fetchCliServers(): Promise<{ servers: CliServerSummary[] }> {
+  return request("/api/cli/servers");
+}
+
 export function deleteServer(name: string): Promise<{ config: OmniMcpConfig }> {
   return request(`/api/servers/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
@@ -109,6 +125,71 @@ export function postReload(): Promise<{ config: OmniMcpConfig; warnings: string[
   return request("/api/reload", { method: "POST" });
 }
 
+export function fetchSecrets(): Promise<SecretsResponse> {
+  return request("/api/secrets");
+}
+
+export function putSecret(name: string, value: string): Promise<SecretsResponse & { ok: true }> {
+  return request(`/api/secrets/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    body: JSON.stringify({ value }),
+  });
+}
+
+export function deleteSecret(name: string): Promise<SecretsResponse & { ok: true; deleted: true }> {
+  return request(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+export function syncSecrets(): Promise<SecretsResponse & { ok: true }> {
+  return request("/api/secrets/sync", { method: "POST" });
+}
+
+export function migrateSecretBackend(
+  backend: "file" | "keychain",
+): Promise<SecretsResponse & { ok: true; migrated: number }> {
+  return request("/api/secrets/backend", {
+    method: "POST",
+    body: JSON.stringify({ backend }),
+  });
+}
+
+export function previewSecretBackendMigration(
+  backend: "file" | "keychain",
+): Promise<{ from: "file" | "keychain"; to: "file" | "keychain"; count: number; keychainSupported: boolean }> {
+  return request(`/api/secrets/backend?backend=${backend}`);
+}
+
+export function importKeychainSecret(
+  name: string,
+  service: string,
+  account: string,
+): Promise<SecretsResponse & { ok: true }> {
+  return request("/api/secrets/import-keychain", {
+    method: "POST",
+    body: JSON.stringify({ name, service, account }),
+  });
+}
+
+export interface InlineSecretCandidate {
+  name: string;
+  server: string;
+  field: "env" | "auth";
+  envKey?: string;
+}
+
+export function fetchInlineSecretMigration(): Promise<{ candidates: InlineSecretCandidate[]; conflicts: string[] }> {
+  return request("/api/secrets/migrate-inline");
+}
+
+export function applyInlineSecretMigration(
+  renames: Record<string, string> = {},
+): Promise<SecretsResponse & { ok: true; migrated: number }> {
+  return request("/api/secrets/migrate-inline", {
+    method: "POST",
+    body: JSON.stringify({ renames }),
+  });
+}
+
 export function fetchIdeSnippets(token?: string): Promise<IdeSnippetsResult> {
   const q = token ? `?token=${encodeURIComponent(token)}` : "";
   return request(`/api/ide-snippets${q}`);
@@ -117,6 +198,7 @@ export function fetchIdeSnippets(token?: string): Promise<IdeSnippetsResult> {
 export interface TrafficLogFilters {
   from: string;
   to: string;
+  source?: "mcp" | "cli";
   token?: string;
   profile?: string;
   server?: string;

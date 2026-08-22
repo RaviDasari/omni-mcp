@@ -41,11 +41,21 @@ export class HttpAdapter implements ServerAdapter {
       // Send initialized notification
       await this.sendMcpNotification("notifications/initialized", {});
 
-      // Fetch tools
-      const toolsResult = (await this.sendMcpRequest("tools/list", {})) as {
-        tools: Tool[];
-      };
-      this.tools = toolsResult.tools ?? [];
+      // Fetch every page before publishing the cached catalog.
+      const tools: Tool[] = [];
+      let cursor: string | undefined;
+      do {
+        const toolsResult = (await this.sendMcpRequest(
+          "tools/list",
+          cursor ? { cursor } : {},
+        )) as {
+          tools?: Tool[];
+          nextCursor?: string;
+        };
+        tools.push(...(toolsResult.tools ?? []));
+        cursor = toolsResult.nextCursor || undefined;
+      } while (cursor);
+      this.tools = tools;
 
       this._status = "connected";
       this.logger.info(`Connected. ${this.tools.length} tools available.`);

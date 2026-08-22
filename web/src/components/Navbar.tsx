@@ -1,5 +1,18 @@
-import { NavLink } from "react-router-dom";
-import { Activity, Cable, KeyRound, ListFilter, Menu, Shield, Terminal, Wrench } from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
+import {
+  Activity,
+  Cable,
+  EllipsisVertical,
+  KeyRound,
+  Keyboard,
+  ListFilter,
+  Menu,
+  Shield,
+  ShieldCheck,
+  Terminal,
+  Wrench,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,17 +22,33 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const links = [
+interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  end?: boolean;
+}
+
+const primaryLinks: NavItem[] = [
   { to: "/", label: "Overview", icon: Activity, end: true },
-  { to: "/servers", label: "Servers", icon: Cable },
-  { to: "/profiles", label: "Profiles", icon: Shield },
-  { to: "/tokens", label: "Tokens", icon: KeyRound },
+  { to: "/servers", label: "MCP Servers", icon: Cable },
+  { to: "/cli", label: "CLI", icon: Keyboard },
+];
+
+const secondaryLinks: NavItem[] = [
   { to: "/logs", label: "Logs", icon: ListFilter },
   { to: "/playground", label: "Playground", icon: Wrench },
+  { to: "/tokens", label: "Tokens", icon: KeyRound },
+  { to: "/secrets", label: "Secrets", icon: ShieldCheck },
+  { to: "/profiles", label: "Profiles", icon: Shield },
   { to: "/ide", label: "IDE", icon: Terminal },
 ];
 
 export default function Navbar() {
+  const location = useLocation();
+  const allLinks = [...primaryLinks, ...secondaryLinks];
+  const secondaryActive = secondaryLinks.some((link) => location.pathname === link.to);
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -30,12 +59,12 @@ export default function Navbar() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-foreground">omni-mcp</h1>
-              <p className="text-xs text-muted-foreground hidden sm:block">Local MCP gateway</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">Local MCP Gateway &amp; Server Manager</p>
             </div>
           </NavLink>
 
           <nav className="flex items-center gap-4 sm:gap-6 shrink-0">
-            {links.map((link) => (
+            {primaryLinks.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
@@ -53,6 +82,41 @@ export default function Navbar() {
                 {link.label}
               </NavLink>
             ))}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={[
+                    "hidden lg:inline-flex",
+                    secondaryActive ? "text-[var(--accent-primary)]" : "text-muted-foreground",
+                  ].join(" ")}
+                  aria-label="Open more navigation"
+                >
+                  <EllipsisVertical className="h-5 w-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {secondaryLinks.map((link) => (
+                  <DropdownMenuItem key={link.to} asChild>
+                    <NavLink
+                      to={link.to}
+                      className={({ isActive }) =>
+                        [
+                          "flex items-center gap-2 cursor-pointer w-full",
+                          isActive ? "text-[var(--accent-primary)]" : "",
+                        ].join(" ")
+                      }
+                    >
+                      <link.icon className="h-4 w-4" />
+                      {link.label}
+                    </NavLink>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <ThemeToggle />
 
             <DropdownMenu>
@@ -62,7 +126,7 @@ export default function Navbar() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48 lg:hidden">
-                {links.map((link) => (
+                {allLinks.map((link) => (
                   <DropdownMenuItem key={link.to} asChild>
                     <NavLink
                       to={link.to}

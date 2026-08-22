@@ -4,10 +4,11 @@ import { StdioAdapter, HttpAdapter, type ServerAdapter } from "./transport/index
 import { Logger } from "./logger.js";
 import { VERSION } from "./version.js";
 import { resolveUiDir } from "./ui-dir.js";
-import { loadConfig, writeConfig } from "./config/index.js";
+import { loadConfig, resolveConfig, writeConfig } from "./config/index.js";
 
 export interface AppContext {
   config: OmniMcpConfig;
+  rawConfig: OmniMcpConfig;
   gateway: Gateway;
   adapters: Map<string, ServerAdapter>;
   configPath?: string;
@@ -16,6 +17,7 @@ export interface AppContext {
 export interface StartAppOptions {
   configPath?: string;
   uiDir?: string;
+  rawConfig?: OmniMcpConfig;
 }
 
 /**
@@ -156,33 +158,50 @@ export async function startApp(
     logger.warn(`${failed} server(s) failed to initialize. Partial functionality available.`);
   }
 
-  const context: AppContext = { config, gateway: null as unknown as Gateway, adapters, configPath: options.configPath };
+  const initialRawConfig = options.rawConfig ?? structuredClone(config);
+  const context: AppContext = {
+    config,
+    rawConfig: initialRawConfig,
+    gateway: null as unknown as Gateway,
+    adapters,
+    configPath: options.configPath,
+  };
 
   const gateway = new Gateway({
     config,
+    rawConfig: initialRawConfig,
     adapters,
     configPath: options.configPath,
     uiDir: options.uiDir ?? resolveUiDir(),
     version: VERSION,
-    onSaveConfig: async (next) => {
-      if (options.configPath) {
-        writeConfig(options.configPath, next);
+    onSaveConfig: async (rawNext) => {
+      const resolved = resolveConfig(rawNext as unknown as Record<string, unknown>);
+      if (!resolved.config || !resolved.rawConfig) {
+        throw new Error(
+          `Validation failed: ${resolved.errors.map((error) => error.message).join("; ")}`,
+        );
       }
-      await applyAdapterChanges(adapters, context.config, next);
-      context.config = next;
-      gateway.updateConfig(next);
+      if (options.configPath) {
+        writeConfig(options.configPath, resolved.rawConfig);
+      }
+      await applyAdapterChanges(adapters, context.config, resolved.config);
+      context.config = resolved.config;
+      context.rawConfig = resolved.rawConfig;
+      gateway.updateConfig(resolved.config, resolved.rawConfig);
+      return resolved.config;
     },
     onReloadFromDisk: async () => {
       if (!options.configPath) {
         throw new Error("No config path configured");
       }
       const reloaded = loadConfig(options.configPath);
-      if (!reloaded.config) {
+      if (!reloaded.config || !reloaded.rawConfig) {
         throw new Error(reloaded.errors.map((e) => e.message).join("; ") || "Reload failed");
       }
       await applyAdapterChanges(adapters, context.config, reloaded.config);
       context.config = reloaded.config;
-      gateway.updateConfig(reloaded.config);
+      context.rawConfig = reloaded.rawConfig;
+      gateway.updateConfig(reloaded.config, reloaded.rawConfig);
       return { warnings: reloaded.warnings.map((w) => w.message) };
     },
   });
@@ -221,6 +240,6 @@ function getAdapterType(adapter: ServerAdapter): string {
 }
 
 function comparableServer(server: ServerConfig): Record<string, unknown> {
-  const { enabled, ...rest } = server;
+  const { enabled, cli: _cli, ...rest } = server;
   return { enabled: enabled !== false, ...rest };
 }

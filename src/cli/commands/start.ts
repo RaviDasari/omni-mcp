@@ -62,7 +62,7 @@ function daemonize(options: StartOptions): void {
 async function runForeground(options: StartOptions): Promise<void> {
   setLogLevel(options.logLevel as LogLevel);
 
-  const { config, errors, warnings } = loadConfig(options.config);
+  const { config, rawConfig, errors, warnings } = loadConfig(options.config);
 
   if (errors.length > 0) {
     const isNotFound = errors.length === 1 && errors[0]!.message.startsWith("Config file not found:");
@@ -103,7 +103,7 @@ async function runForeground(options: StartOptions): Promise<void> {
 
   let context: AppContext;
   try {
-    context = await startApp(config, { configPath: options.config });
+    context = await startApp(config, { configPath: options.config, rawConfig });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     process.stderr.write(`[omni-mcp] FATAL: ${message}\n`);

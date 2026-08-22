@@ -61,6 +61,7 @@
 - `stdio` and `http` upstream transport bridging.
 - CLI management (`start`, `status`, `stop`).
 - Local web management UI (no login) served at `http://127.0.0.1:6317/`.
+- Write-only managed secrets (`$NAME` / `${NAME}`) with a file store or macOS Keychain.
 - Crash isolation and auto-restart.
 
 ### Phase 2 — Team Cloud Service (future)
@@ -79,7 +80,7 @@
 
 | File | Topic |
 |------|-------|
-| [01-configuration.md](./01-configuration.md) | Config file schema and environment variable resolution |
+| [01-configuration.md](./01-configuration.md) | Config file schema, `secretStore`, and `$NAME` resolution |
 | [02-token-auth.md](./02-token-auth.md) | Token model, profile binding, precedence rules |
 | [03-proxy-gateway.md](./03-proxy-gateway.md) | HTTP gateway, routing, aggregated tool exposure |
 | [04-transport-bridging.md](./04-transport-bridging.md) | stdio and HTTP upstream transport adapters |
@@ -88,3 +89,5 @@
 | [07-ide-integration.md](./07-ide-integration.md) | IDE setup, auto-discovery, per-client profiles |
 | [08-web-ui.md](./08-web-ui.md) | Local management UI and `/api` routes |
 | [09-traffic-logs.md](./09-traffic-logs.md) | MCP tool-call traffic log, UI filters, retention |
+| [10-managed-cli.md](./10-managed-cli.md) | Managed CLI for opt-in upstream tools |
+| [11-managed-secrets.md](./11-managed-secrets.md) | Secret store, `$NAME` references, CLI/API/UI |

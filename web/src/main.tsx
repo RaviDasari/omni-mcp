@@ -10,6 +10,8 @@ import TokensPage from "@/pages/TokensPage";
 import IdePage from "@/pages/IdePage";
 import LogsPage from "@/pages/LogsPage";
 import PlaygroundPage from "@/pages/PlaygroundPage";
+import CliPage from "@/pages/CliPage";
+import SecretsPage from "@/pages/SecretsPage";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
@@ -25,6 +27,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/ide" element={<IdePage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/playground" element={<PlaygroundPage />} />
+            <Route path="/cli" element={<CliPage />} />
+            <Route path="/secrets" element={<SecretsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

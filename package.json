@@ -26,7 +26,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "build": "npm run build:web && tsup && node scripts/copy-ui.mjs",
+    "build": "npm run build:web && tsup && node scripts/copy-assets.mjs",
     "build:web": "npm --prefix web run build",
     "dev": "tsup --watch",
     "dev:ui": "npm --prefix web run dev",

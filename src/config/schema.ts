@@ -4,9 +4,14 @@ import { z } from "zod";
 
 const envVarsSchema = z.record(z.string(), z.string());
 
+const serverCliSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
 const stdioServerSchema = z.object({
   type: z.literal("stdio"),
   enabled: z.boolean().default(true),
+  cli: serverCliSchema.default({ enabled: false }),
   command: z.string().min(1, "command is required"),
   args: z.array(z.string()).default([]),
   maxRestarts: z.number().int().min(0).default(3),
@@ -25,6 +30,7 @@ const httpAuthSchema = z.object({
 const httpServerSchema = z.object({
   type: z.literal("http"),
   enabled: z.boolean().default(true),
+  cli: serverCliSchema.default({ enabled: false }),
   url: z.string().url("url must be a valid URL"),
   auth: httpAuthSchema.optional(),
   timeoutMs: z.number().int().min(0).default(30000),
@@ -68,6 +74,11 @@ const trafficLogSchema = z.object({
   maxBytes: z.number().int().min(65536).max(52428800).default(5242880),
 });
 
+const secretStoreSchema = z.object({
+  backend: z.enum(["file", "keychain"]).default("file"),
+  keychainService: z.literal("omni-mcp").default("omni-mcp"),
+});
+
 // --- Top-level config schema ---
 
 export const configSchema = z.object({
@@ -93,6 +104,10 @@ export const configSchema = z.object({
     retentionDays: 7,
     maxBytes: 5242880,
   }),
+  secretStore: secretStoreSchema.default({
+    backend: "file",
+    keychainService: "omni-mcp",
+  }),
 });
 
 // --- Exported types ---
@@ -104,4 +119,5 @@ export type ProfileConfig = z.infer<typeof profileSchema>;
 export type TokenConfig = z.infer<typeof tokenSchema>;
 export type SecurityConfig = z.infer<typeof securitySchema>;
 export type TrafficLogConfig = z.infer<typeof trafficLogSchema>;
+export type SecretStoreConfig = z.infer<typeof secretStoreSchema>;
 export type OmniMcpConfig = z.infer<typeof configSchema>;

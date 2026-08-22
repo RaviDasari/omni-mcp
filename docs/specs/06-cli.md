@@ -40,6 +40,61 @@ These flags are accepted by all commands:
 
 ## Commands
 
+### `omni-mcp cli`
+
+Discovers and invokes tools from servers explicitly enabled with `servers.<name>.cli.enabled`.
+The running local gateway is required, and CLI access is independent of token profiles.
+
+```bash
+omni-mcp cli --list
+omni-mcp cli github --list --search issue
+omni-mcp cli github create-issue --owner acme --repo app --title "Bug"
+omni-mcp cli github create-issue --args-json '{"owner":"acme","repo":"app","title":"Bug"}' --json
+```
+
+Tool commands and flags are generated at runtime from MCP input schemas. See
+[10-managed-cli.md](./10-managed-cli.md) for naming, argument, output, and security behavior.
+
+#### Agent skill installation
+
+```bash
+omni-mcp cli install-skill [--target cursor|claude|all] [--scope user|project] [--force]
+```
+
+Installs the bundled `omni-mcp-cli` skill for Cursor and/or Claude. The defaults are `--target all`
+and `--scope user`; modified existing skill files require `--force`.
+
+### `omni-mcp secrets`
+
+Manages write-only secret values used by exact `$NAME` / `${NAME}` references in config.
+Values never appear in argv, `--json` output, or logs. See [11-managed-secrets.md](./11-managed-secrets.md).
+
+```bash
+omni-mcp secrets list [--json]
+omni-mcp secrets status [--json]
+omni-mcp secrets get-status [--json]
+omni-mcp secrets set <name> [--stdin]
+omni-mcp secrets delete <name>
+omni-mcp secrets sync
+omni-mcp secrets import-keychain [name] --service <svc> --account <acct> [--name <NAME>]
+omni-mcp secrets migrate --backend file|keychain
+omni-mcp secrets migrate --inline [--preview] [--apply] [--rename NAME=NEW_NAME ...] [--json]
+```
+
+| Command / flag | Effect |
+|------|---------|
+| `list` | Backend, Keychain support, and per-variable set/unset with config usage counts |
+| `status`, `get-status` | Aliases of `list` |
+| `set <name>` | Hidden TTY prompt, or stdin with `--stdin` or when stdin is not a TTY. No value flag |
+| `delete <name>` | Remove if the raw config does not reference the name |
+| `sync` | Validate and refresh variables from the active backend (file or Keychain) |
+| `import-keychain` | Copy one external Keychain item into the active store; destination name is positional or `--name` |
+| `migrate --backend` | Exclusive file ↔ Keychain migration (verify destination, then delete source) |
+| `migrate --inline` | Preview by default; `--apply` moves config literals into the store and rewrites fields to `$NAME` |
+
+All subcommands accept `--config <path>`. `--json` is metadata only. Values never appear in argv or
+output. Inline collisions must be resolved with `--rename NAME=NEW_NAME` before `--apply`.
+
 ### `omni-mcp init`
 
 Interactively scaffolds a new `omni-mcp.config.json` with zero manual JSON editing. Designed for a first-run experience that takes under 30 seconds.
@@ -433,7 +488,7 @@ Useful in CI, pre-commit hooks, or when editing the config.
 ```
 [omni-mcp] Config invalid: /home/user/project/omni-mcp.config.json (2 error(s))
   1. profiles.safe-coding.allow: unknown server "nonexistent"
-  2. servers.my-api.auth.token: "$MY_JWT" is not set in environment
+  2. servers.my-api.auth.token: neither the process environment nor the active secret store defines "MY_JWT"
 ```
 
 Exit codes: `0` = valid, `1` = invalid.
@@ -454,7 +509,7 @@ Format: `[<source>] <ISO8601_TIMESTAMP> <LEVEL>  <message>`
 
 - `<source>`: `omni-mcp` for gateway events, or the server name for per-server events.
 - Token values MUST NOT appear in any log output.
-- JWT tokens or other secret values MUST NOT appear in any log output.
+- JWT tokens, secret-store values, and resolved `$NAME` substitutions MUST NOT appear in any log output.
 
 ---
 

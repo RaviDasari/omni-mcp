@@ -12,6 +12,8 @@ import { removeCommand } from "./commands/remove.js";
 import { ideSnippetsCommand } from "./commands/ide-snippets.js";
 import { initCommand } from "./commands/init.js";
 import { DEFAULT_CONFIG_PATH } from "./config-path.js";
+import { runManagedCli } from "./managed-cli.js";
+import { registerSecretsCommand } from "./commands/secrets.js";
 
 const program = new Command();
 
@@ -100,4 +102,14 @@ program
   .option("--template <name>", "Start from template: minimal, multi-agent, team")
   .action(initCommand);
 
-program.parse();
+registerSecretsCommand(program);
+
+program
+  .command("cli")
+  .description("Discover and call tools from CLI-enabled managed MCP servers");
+
+if (process.argv[2] === "cli") {
+  process.exitCode = await runManagedCli(process.argv.slice(3));
+} else {
+  await program.parseAsync();
+}

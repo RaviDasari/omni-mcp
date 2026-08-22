@@ -21,6 +21,7 @@ function createLog(
 function event(overrides: Partial<TrafficLogEvent> = {}): TrafficLogEvent {
   return {
     ts: new Date().toISOString(),
+    source: "mcp",
     token: "cursor",
     profile: "admin",
     server: "filesystem",
@@ -65,6 +66,55 @@ describe("TrafficLog", () => {
     expect(raw).not.toContain("arguments");
     expect(raw).not.toContain("result");
     expect(raw).not.toContain("message");
+  });
+
+  it("filters MCP and CLI sources and treats legacy records as MCP", async () => {
+    const { log, directory } = createLog();
+    const ts = new Date().toISOString();
+    await log.append(event({ ts, source: "cli", token: "", profile: "" }));
+    writeFileSync(
+      join(directory, `${ts.slice(0, 10)}.jsonl`),
+      `${JSON.stringify({
+        ts: new Date(Date.now() - 1000).toISOString(),
+        token: "cursor",
+        profile: "admin",
+        server: "github",
+        tool: "list_issues",
+        namespacedTool: "github__list_issues",
+        durationMs: 5,
+        outcome: "ok",
+      })}\n`,
+      { flag: "a" },
+    );
+
+    const cli = await log.query({
+      from: Date.now() - 60_000,
+      to: Date.now() + 60_000,
+      source: "cli",
+      offset: 0,
+      limit: 100,
+    });
+    expect(cli.events).toHaveLength(1);
+    expect(cli.events[0]).toMatchObject({ source: "cli", token: "", profile: "" });
+
+    const mcp = await log.query({
+      from: Date.now() - 60_000,
+      to: Date.now() + 60_000,
+      source: "mcp",
+      offset: 0,
+      limit: 100,
+    });
+    expect(mcp.events).toHaveLength(1);
+    expect(mcp.events[0]).toMatchObject({ source: "mcp", token: "cursor" });
+
+    const grouped = await log.summarize(
+      { from: Date.now() - 60_000, to: Date.now() + 60_000 },
+      "source",
+    );
+    expect(grouped.groups).toEqual([
+      { key: "cli", count: 1, ok: 1, error: 0 },
+      { key: "mcp", count: 1, ok: 1, error: 0 },
+    ]);
   });
 
   it("groups matching records and separates namespaced tools", async () => {

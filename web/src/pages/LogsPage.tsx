@@ -77,7 +77,7 @@ function FilterSelect({
           <SelectItem value={ALL}>All {label.toLowerCase()}s</SelectItem>
           {values.map((item) => (
             <SelectItem key={item} value={item}>
-              {item}
+              {label === "Source" ? item.toUpperCase() : item}
             </SelectItem>
           ))}
         </SelectContent>
@@ -89,6 +89,7 @@ function FilterSelect({
 export default function LogsPage() {
   const { config, error: configError } = useConfig();
   const [mode, setMode] = useState<"list" | "grouped">("list");
+  const [source, setSource] = useState(ALL);
   const [token, setToken] = useState(ALL);
   const [profile, setProfile] = useState(ALL);
   const [server, setServer] = useState(ALL);
@@ -115,11 +116,12 @@ export default function LogsPage() {
     return {
       from: new Date(from).toISOString(),
       to: new Date(to).toISOString(),
+      ...(source === ALL ? {} : { source: source as "mcp" | "cli" }),
       ...(token === ALL ? {} : { token }),
       ...(profile === ALL ? {} : { profile }),
       ...(server === ALL ? {} : { server }),
     };
-  }, [from, profile, rangeError, server, to, token]);
+  }, [from, profile, rangeError, server, source, to, token]);
 
   const load = useCallback(async () => {
     if (!filters || disabled) {
@@ -163,7 +165,9 @@ export default function LogsPage() {
           </div>
           <div>
             <h2 className="text-3xl font-bold text-foreground">Traffic logs</h2>
-            <p className="text-muted-foreground">MCP tool-call metadata without arguments or results</p>
+            <p className="text-muted-foreground">
+              MCP and CLI tool-call metadata without arguments or results
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -232,7 +236,13 @@ export default function LogsPage() {
           <CardDescription>Records are retained for {config?.trafficLog?.retentionDays ?? 7} days.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+            <FilterSelect
+              label="Source"
+              value={source}
+              values={["mcp", "cli"]}
+              onChange={resetOffset(setSource)}
+            />
             <FilterSelect label="Token" value={token} values={tokenNames} onChange={resetOffset(setToken)} />
             <FilterSelect label="Profile" value={profile} values={profileNames} onChange={resetOffset(setProfile)} />
             <FilterSelect label="Server" value={server} values={serverNames} onChange={resetOffset(setServer)} />
@@ -276,6 +286,7 @@ export default function LogsPage() {
               <SelectContent>
                 <SelectItem value="tool">Group by tool</SelectItem>
                 <SelectItem value="server">Group by server</SelectItem>
+                <SelectItem value="source">Group by source</SelectItem>
                 <SelectItem value="token">Group by token</SelectItem>
                 <SelectItem value="profile">Group by profile</SelectItem>
               </SelectContent>
@@ -320,6 +331,7 @@ function LogList({
         <TableHeader>
           <TableRow>
             <TableHead>Time</TableHead>
+            <TableHead>Source</TableHead>
             <TableHead>Token</TableHead>
             <TableHead>Profile</TableHead>
             <TableHead>Server</TableHead>
@@ -332,6 +344,9 @@ function LogList({
           {data.events.map((event, index) => (
             <TableRow key={`${event.ts}-${event.namespacedTool}-${index}`}>
               <TableCell className="whitespace-nowrap">{formatTimestamp(event.ts)}</TableCell>
+              <TableCell>
+                <Badge variant="outline">{event.source.toUpperCase()}</Badge>
+              </TableCell>
               <TableCell>{event.token || "—"}</TableCell>
               <TableCell>{event.profile}</TableCell>
               <TableCell>{event.server || "—"}</TableCell>

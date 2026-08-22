@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { callServerTool, fetchServerTools } from "@/lib/api";
+import { omitOptionalNulls, requiredFields, schemaTemplate } from "@/lib/schema-template";
 import type { McpTool, ServerToolCallResponse, ServerToolsResponse } from "@/lib/types";
 import { useConfig } from "@/hooks/useConfig";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -32,39 +33,6 @@ import { cn } from "@/lib/utils";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function schemaTemplate(schema?: Record<string, unknown>): string {
-  const value = schemaValue(schema);
-  return JSON.stringify(isRecord(value) ? value : {}, null, 2);
-}
-
-function schemaValue(schema?: Record<string, unknown>): unknown {
-  if (!schema) return {};
-  if ("default" in schema) return schema.default;
-  if (Array.isArray(schema.examples) && schema.examples.length > 0) return schema.examples[0];
-
-  if (schema.type === "object" || isRecord(schema.properties)) {
-    const properties = isRecord(schema.properties) ? schema.properties : {};
-    const required = new Set(Array.isArray(schema.required) ? schema.required : []);
-    const value: Record<string, unknown> = {};
-    for (const [name, property] of Object.entries(properties)) {
-      if (!isRecord(property)) continue;
-      const hasExample =
-        "default" in property || (Array.isArray(property.examples) && property.examples.length > 0);
-      if (required.has(name) || hasExample) value[name] = schemaValue(property);
-    }
-    return value;
-  }
-  if (schema.type === "array") return [];
-  if (schema.type === "boolean") return false;
-  if (schema.type === "integer" || schema.type === "number") return 0;
-  if (schema.type === "string") return "";
-  return null;
-}
-
-function requiredFields(schema?: Record<string, unknown>): string[] {
-  return Array.isArray(schema?.required) ? (schema.required as unknown[]).filter((f): f is string => typeof f === "string") : [];
 }
 
 function resultText(result: ServerToolCallResponse["result"]): string {
@@ -170,7 +138,9 @@ export default function PlaygroundPage() {
 
     setCalling(true);
     try {
-      setCallResult(await callServerTool(server, selectedTool.name, args));
+      setCallResult(
+        await callServerTool(server, selectedTool.name, omitOptionalNulls(args, selectedTool.inputSchema)),
+      );
     } catch (error) {
       setCallError(error instanceof Error ? error.message : "Tool call failed");
     } finally {
@@ -453,7 +423,8 @@ function ToolPanel({
               className="resize-y font-mono text-xs"
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              JSON object sent as the tool arguments. Press Cmd/Ctrl + Enter to run.
+              JSON object sent as the tool arguments. Optional fields are pre-filled as{" "}
+              <code>null</code> and are dropped when you run. Press Cmd/Ctrl + Enter to run.
             </p>
           </TabsContent>
 

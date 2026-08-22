@@ -2,17 +2,20 @@
 
 ## Overview
 
-The gateway records **metadata-only** records for each upstream `tools/call` so the local web UI can show which MCP tools ran, for which token/profile/server, and how often. Tool arguments and tool results are **never** stored. Records live on disk for at most **seven days** and are capped in size so the log cannot grow without bound.
+The gateway records **metadata-only** records for each upstream tool call made through MCP or the
+managed CLI so the local web UI can show which tools ran, through which source, for which
+token/profile/server, and how often. Tool arguments and tool results are **never** stored. Records
+live on disk for at most **seven days** and are capped in size so the log cannot grow without bound.
 
 This is separate from the daemon stderr file (`~/.omni-mcp/omni-mcp.log`) used by `omni-mcp start`.
 
 ## Functional Requirements
 
 ### Behavior
-- On every MCP `tools/call` that the gateway attempts to route (including profile denials, unknown servers, and upstream failures), append one traffic record **after** the call completes or fails.
-- Each record stores: UTC timestamp, token name, profile name, upstream server key, un-namespaced tool name, namespaced tool name (`server__tool`), duration in milliseconds, and outcome (`ok` | `error`). Optional: MCP error `code` only (integer). No argument objects, no result payloads, no upstream stdout, no error `message`/`data` strings (those can contain secrets or argument echoes).
+- On every MCP `tools/call` or managed CLI tool call that the gateway attempts to route (including profile denials, CLI enablement denials, unknown servers/tools, and upstream failures), append one traffic record **after** the call completes or fails.
+- Each record stores: UTC timestamp, source (`mcp` | `cli`), token name, profile name, upstream server key, un-namespaced tool name, namespaced tool name (`server__tool`), duration in milliseconds, and outcome (`ok` | `error`). CLI records use empty token/profile values because CLI access is independent of profiles. Optional: MCP error `code` only (integer). No argument objects, no result payloads, no upstream stdout, no error `message`/`data` strings (those can contain secrets or argument echoes).
 - Do **not** log `tools/list`, `initialize`, or other MCP methods. Those are noisy and are not “which tool was called.”
-- The web UI at `/logs` lists records and can filter by token, profile, server, and date range.
+- The web UI at `/logs` lists records and can filter by source, token, profile, server, and date range.
 - A **Grouped** mode shows counts for the same filters, grouped by a chosen dimension (default: tool).
 - Records older than `trafficLog.retentionDays` (default **7**) are deleted on a timer and again whenever a new record is written.
 - Total on-disk size of traffic logs must not exceed `trafficLog.maxBytes` (default **5 MiB**). When a write would exceed the cap, drop the oldest records until the write fits. If a single record cannot fit even after emptying (should not happen given the schema), drop the new record and increment an in-memory `dropped` counter.
@@ -32,10 +35,10 @@ This is separate from the daemon stderr file (`~/.omni-mcp/omni-mcp.log`) used b
 | Interaction | Expected Result |
 |---|---|
 | Open **Logs** in the navbar | Navigate to `/logs` |
-| Change Token / Profile / Server `Select` | Refetch with that filter (`""` / “All” means no constraint) |
+| Change Source / Token / Profile / Server `Select` | Refetch with that filter (`""` / “All” means no constraint) |
 | Set From / To dates | Refetch; invalid range (from > to) shows inline error and does not fetch |
 | Switch Tabs **List** / **Grouped** | List uses `/api/traffic-logs`; Grouped uses `/api/traffic-logs/summary` |
-| Change Group by (`Select`) | Refetch summary (`tool` \| `server` \| `token` \| `profile`) |
+| Change Group by (`Select`) | Refetch summary (`tool` \| `server` \| `source` \| `token` \| `profile`) |
 | Click Reload | Refetch current query |
 | Click Clear logs | Confirm `AlertDialog`, then `DELETE /api/traffic-logs` (loopback); empty table |
 
@@ -44,6 +47,8 @@ This is separate from the daemon stderr file (`~/.omni-mcp/omni-mcp.log`) used b
 - Globally disabled or disconnected upstream: log `error` with `server` and `tool` filled in.
 - Token resolved via unknown-token fallback: log the **effective** token name (`default` when that policy applies), not a placeholder.
 - Missing `Authorization`: log `token` as `""` and the profile actually used (fallback or reject — reject means no `tools/call` is routed, so no record).
+- Managed CLI calls log `source: "cli"` with empty token/profile values; MCP calls log `source: "mcp"`.
+- Legacy records without `source` are read as MCP records.
 - Clock skew: timestamps are gateway `Date.now()` ISO-8601 UTC.
 - Concurrent writes: serialize appends in-process (one gateway process).
 - UI polling is **not** required in Phase 1; operator clicks Reload. (Live tail is out of scope.)
@@ -55,7 +60,7 @@ This is separate from the daemon stderr file (`~/.omni-mcp/omni-mcp.log`) used b
 
 **Gateway**
 - `src/gateway/traffic-log.ts` — append, query, summary, rotate, size cap
-- `src/gateway/gateway.ts` — emit a record from `handleToolCall` (pass token + profile from `routeRequest`); register `/api/traffic-logs` routes
+- `src/gateway/gateway.ts` — emit records from MCP and CLI tool-call routes; register `/api/traffic-logs` routes
 - `src/config/schema.ts` — `trafficLog` object
 - `src/cli/commands/start.ts` — daemon dir already `~/.omni-mcp`; traffic files live under `~/.omni-mcp/traffic/`
 
@@ -82,6 +87,7 @@ All three routes: **loopback-only**. Non-loopback → `403` `{ "error": "Writes 
   |---|---|---|---|
   | `from` | ISO-8601 UTC | now − 24h | Inclusive |
   | `to` | ISO-8601 UTC | now | Inclusive |
+  | `source` | `mcp` \| `cli` | omitted | Exact invocation source |
   | `token` | string | omitted | Exact token name |
   | `profile` | string | omitted | Exact profile name |
   | `server` | string | omitted | Exact server key |
@@ -95,6 +101,7 @@ All three routes: **loopback-only**. Non-loopback → `403` `{ "error": "Writes 
   "events": [
     {
       "ts": "2026-08-21T20:15:03.412Z",
+      "source": "mcp",
       "token": "cursor",
       "profile": "admin",
       "server": "filesystem",
@@ -129,10 +136,10 @@ All three routes: **loopback-only**. Non-loopback → `403` `{ "error": "Writes 
 #### `GET /api/traffic-logs/summary`
 - **Triggered**: Logs page, Grouped tab
 - **Client restriction**: loopback-only
-- **Query**: same filters as list (`from`, `to`, `token`, `profile`, `server`, `tool`) plus:
+- **Query**: same filters as list (`from`, `to`, `source`, `token`, `profile`, `server`, `tool`) plus:
   | Param | Type | Default |
   |---|---|---|
-  | `groupBy` | `tool` \| `server` \| `token` \| `profile` | `tool` |
+| `groupBy` | `tool` \| `server` \| `source` \| `token` \| `profile` | `tool` |
 
 When `groupBy=tool`, the key is `namespacedTool` (e.g. `filesystem__read_file`) so collisions across servers do not merge.
 
@@ -167,7 +174,7 @@ Files: `YYYY-MM-DD.jsonl` (UTC date of `ts`). One JSON object per line, same fie
 Example line:
 
 ```json
-{"ts":"2026-08-21T20:15:03.412Z","token":"cursor","profile":"admin","server":"filesystem","tool":"read_file","namespacedTool":"filesystem__read_file","durationMs":18,"outcome":"ok"}
+{"ts":"2026-08-21T20:15:03.412Z","source":"mcp","token":"cursor","profile":"admin","server":"filesystem","tool":"read_file","namespacedTool":"filesystem__read_file","durationMs":18,"outcome":"ok"}
 ```
 
 **Rotation**
@@ -215,7 +222,7 @@ No environment-variable override in Phase 1 (`_TBD_` if operators later need `OM
 | `Input` | `@/components/ui/input` | From/To datetime-local (or Calendar + Date Picker if already installed) |
 | `Skeleton` | `@/components/ui/skeleton` | Loading (install via shadcn CLI if missing) |
 
-Filter option lists: token names, profile names, and server keys from `GET /api/config` (already loaded by the UI). Do not invent a separate metadata endpoint.
+Filter option lists: fixed sources (`mcp`, `cli`) plus token names, profile names, and server keys from `GET /api/config` (already loaded by the UI). Do not invent a separate metadata endpoint.
 
 ### Technical Constraints
 - Default bind `127.0.0.1`; traffic log `/api` is loopback-only even for GET

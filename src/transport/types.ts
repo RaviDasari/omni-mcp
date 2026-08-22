@@ -8,7 +8,9 @@ export interface Tool {
 
 export interface ToolResult {
   content: Array<{ type: string; text?: string; [key: string]: unknown }>;
+  structuredContent?: unknown;
   isError?: boolean;
+  [key: string]: unknown;
 }
 
 export interface ServerAdapter {

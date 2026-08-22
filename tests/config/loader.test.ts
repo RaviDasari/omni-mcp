@@ -1,8 +1,15 @@
-import { describe, it, expect } from "vitest";
-import { resolve } from "node:path";
-import { loadConfig } from "../../src/config/loader.js";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { afterEach, describe, it, expect } from "vitest";
+import { loadConfig, resolveConfig } from "../../src/config/loader.js";
 
 const FIXTURES_DIR = resolve(import.meta.dirname, "../fixtures");
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
 describe("Config Loader", () => {
   describe("loadConfig", () => {
@@ -31,17 +38,15 @@ describe("Config Loader", () => {
       expect(result.config!.tokens.cursor.profile).toBe("admin");
     });
 
-    it("reports warnings (not errors) for missing env variables", () => {
+    it("reports errors for unresolved secret references", () => {
       const result = loadConfig(
         resolve(FIXTURES_DIR, "valid-config.json"),
         {}, // no env vars
       );
 
-      // Config still loads — missing env vars are degraded servers, not fatal
-      expect(result.errors).toHaveLength(0);
-      expect(result.config).toBeDefined();
-      expect(result.warnings.some((w) => w.message.includes("GITHUB_TOKEN"))).toBe(true);
-      expect(result.warnings.some((w) => w.message.includes("PROD_DB_JWT"))).toBe(true);
+      expect(result.config).toBeUndefined();
+      expect(result.errors.some((error) => error.message.includes("GITHUB_TOKEN"))).toBe(true);
+      expect(result.errors.some((error) => error.message.includes("PROD_DB_JWT"))).toBe(true);
     });
 
     it("reports validation errors for invalid config", () => {
@@ -85,6 +90,36 @@ describe("Config Loader", () => {
       // "default" profile is referenced as the config's default fallback (defaultProfile defaults to "default").
       // All profiles should be reachable in this config.
       expect(result.errors).toHaveLength(0);
+    });
+  });
+
+  describe("resolveConfig", () => {
+    it("resolves references from the requested secrets file and preserves them in rawConfig", () => {
+      const dir = mkdtempSync(join(tmpdir(), "omni-loader-secrets-"));
+      tempDirs.push(dir);
+      const filePath = join(dir, "secrets.json");
+      writeFileSync(filePath, JSON.stringify({ API_TOKEN: "stored-value" }));
+      const raw = {
+        servers: {
+          remote: {
+            type: "http",
+            url: "https://example.com/mcp",
+            auth: { type: "jwt", token: "${API_TOKEN}" },
+          },
+        },
+        profiles: { default: { allow: ["*"] } },
+        tokens: { default: { profile: "default" } },
+        secretStore: { backend: "file" },
+      };
+
+      const result = resolveConfig(raw, { env: {}, filePath });
+
+      expect(result.errors).toEqual([]);
+      const resolvedServer = result.config!.servers.remote;
+      const rawServer = result.rawConfig!.servers.remote;
+      expect(resolvedServer.type === "http" && resolvedServer.auth?.token).toBe("stored-value");
+      expect(rawServer.type === "http" && rawServer.auth?.token).toBe("${API_TOKEN}");
+      expect(result.rawConfig!.port).toBe(6317);
     });
   });
 });

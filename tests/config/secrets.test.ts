@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { mergeSecrets, redactConfig, REDACTED_SECRET } from "../../src/config/secrets.js";
+import {
+  collectSecretUsages,
+  mergeSecrets,
+  redactConfig,
+  REDACTED_SECRET,
+} from "../../src/config/secrets.js";
 import type { OmniMcpConfig } from "../../src/config/schema.js";
 
 function sample(): OmniMcpConfig {
@@ -33,6 +38,7 @@ function sample(): OmniMcpConfig {
     tokens: { default: { profile: "default", disabled: false } },
     security: { unknownTokenPolicy: "fallback-to-default" },
     trafficLog: { enabled: true, retentionDays: 7, maxBytes: 5242880 },
+    secretStore: { backend: "file", keychainService: "omni-mcp" },
   };
 }
 
@@ -43,6 +49,36 @@ describe("config secrets", () => {
     const remote = redacted.servers.remote;
     expect(github.type === "stdio" && github.env?.GITHUB_TOKEN).toBe(REDACTED_SECRET);
     expect(remote.type === "http" && remote.auth?.token).toBe(REDACTED_SECRET);
+  });
+
+  it("preserves exact secret references while redacting literal values", () => {
+    const config = sample();
+    const github = config.servers.github;
+    const remote = config.servers.remote;
+    if (github.type === "stdio") github.env = { BARE: "$TOKEN", BRACED: "${OTHER}" };
+    if (remote.type === "http") remote.auth = { type: "jwt", token: "prefix-$TOKEN" };
+
+    const redacted = redactConfig(config);
+    const redactedGithub = redacted.servers.github;
+    const redactedRemote = redacted.servers.remote;
+    expect(redactedGithub.type === "stdio" && redactedGithub.env).toEqual({
+      BARE: "$TOKEN",
+      BRACED: "${OTHER}",
+    });
+    expect(redactedRemote.type === "http" && redactedRemote.auth?.token).toBe(REDACTED_SECRET);
+  });
+
+  it("collects reference paths and owning servers", () => {
+    const config = sample();
+    const github = config.servers.github;
+    const remote = config.servers.remote;
+    if (github.type === "stdio") github.env = { TOKEN: "$SHARED" };
+    if (remote.type === "http") remote.auth = { type: "jwt", token: "${SHARED}" };
+
+    expect(collectSecretUsages(config).SHARED).toEqual([
+      { path: "servers.github.env.TOKEN", server: "github" },
+      { path: "servers.remote.auth.token", server: "remote" },
+    ]);
   });
 
   it("restores secrets when the UI sends the placeholder", () => {
