@@ -1,12 +1,21 @@
-import type { OmniMcpConfig, StdioServerConfig, HttpServerConfig } from "./config/index.js";
+import type { OmniMcpConfig, ServerConfig } from "./config/index.js";
 import { Gateway } from "./gateway/index.js";
 import { StdioAdapter, HttpAdapter, type ServerAdapter } from "./transport/index.js";
 import { Logger } from "./logger.js";
+import { VERSION } from "./version.js";
+import { resolveUiDir } from "./ui-dir.js";
+import { loadConfig, writeConfig } from "./config/index.js";
 
 export interface AppContext {
   config: OmniMcpConfig;
   gateway: Gateway;
   adapters: Map<string, ServerAdapter>;
+  configPath?: string;
+}
+
+export interface StartAppOptions {
+  configPath?: string;
+  uiDir?: string;
 }
 
 /**
@@ -16,25 +25,10 @@ export async function createAdapters(
   config: OmniMcpConfig,
 ): Promise<Map<string, ServerAdapter>> {
   const adapters = new Map<string, ServerAdapter>();
-  const logger = new Logger("omni-mcp");
 
   for (const [name, serverConfig] of Object.entries(config.servers)) {
-    let adapter: ServerAdapter;
-
-    if (serverConfig.type === "stdio") {
-      const envOverrides: Record<string, string> = {};
-      if (serverConfig.env) {
-        for (const [k, v] of Object.entries(serverConfig.env)) {
-          envOverrides[k] = v;
-        }
-      }
-      adapter = new StdioAdapter(name, serverConfig, envOverrides);
-    } else {
-      const authToken = serverConfig.auth?.token;
-      adapter = new HttpAdapter(name, serverConfig, authToken);
-    }
-
-    adapters.set(name, adapter);
+    if (serverConfig.enabled === false) continue;
+    adapters.set(name, createAdapter(name, serverConfig));
   }
 
   return adapters;
@@ -71,15 +65,84 @@ export async function initializeAdapters(
 /**
  * Starts the full application: adapters + gateway.
  */
-export async function startApp(config: OmniMcpConfig): Promise<AppContext> {
+export function createAdapter(name: string, serverConfig: ServerConfig): ServerAdapter {
+  if (serverConfig.type === "stdio") {
+    const envOverrides: Record<string, string> = {};
+    if (serverConfig.env) {
+      for (const [k, v] of Object.entries(serverConfig.env)) {
+        envOverrides[k] = v;
+      }
+    }
+    return new StdioAdapter(name, serverConfig, envOverrides);
+  }
+
+  return new HttpAdapter(name, serverConfig, serverConfig.auth?.token);
+}
+
+export async function applyAdapterChanges(
+  adapters: Map<string, ServerAdapter>,
+  previous: OmniMcpConfig,
+  next: OmniMcpConfig,
+): Promise<void> {
   const logger = new Logger("omni-mcp");
-  logger.info(`v0.1.0 starting...`);
+  const prevNames = new Set(Object.keys(previous.servers));
+  const nextNames = new Set(Object.keys(next.servers));
+
+  for (const name of prevNames) {
+    if (!nextNames.has(name)) {
+      const adapter = adapters.get(name);
+      if (adapter) {
+        await adapter.disconnect().catch(() => undefined);
+        adapters.delete(name);
+        logger.info(`Disconnected removed server ${name}`);
+      }
+    }
+  }
+
+  for (const name of nextNames) {
+    const nextServer = next.servers[name]!;
+    const prevServer = previous.servers[name];
+    const changed =
+      !prevServer ||
+      JSON.stringify(comparableServer(prevServer)) !==
+        JSON.stringify(comparableServer(nextServer));
+
+    if (!changed) continue;
+
+    const existing = adapters.get(name);
+    if (existing) {
+      await existing.disconnect().catch(() => undefined);
+      adapters.delete(name);
+    }
+
+    if (nextServer.enabled === false) {
+      logger.info(`Disabled server ${name}`);
+      continue;
+    }
+
+    const adapter = createAdapter(name, nextServer);
+    adapters.set(name, adapter);
+    try {
+      await adapter.connect();
+      logger.info(`  ✓  ${name} — connected`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      logger.warn(`  ✗  ${name} — error: ${message}`);
+    }
+  }
+}
+
+export async function startApp(
+  config: OmniMcpConfig,
+  options: StartAppOptions = {},
+): Promise<AppContext> {
+  const logger = new Logger("omni-mcp");
+  logger.info(`v${VERSION} starting...`);
   logger.info(`Active default profile: ${config.defaultProfile}`);
 
   const tokenNames = Object.keys(config.tokens);
   logger.info(`Tokens registered: ${tokenNames.join(", ")} (${tokenNames.length} total)`);
 
-  // Create and initialize adapters
   const adapters = await createAdapters(config);
 
   logger.info("Initializing servers...");
@@ -93,15 +156,45 @@ export async function startApp(config: OmniMcpConfig): Promise<AppContext> {
     logger.warn(`${failed} server(s) failed to initialize. Partial functionality available.`);
   }
 
-  // Start gateway
-  const gateway = new Gateway({ config, adapters });
+  const context: AppContext = { config, gateway: null as unknown as Gateway, adapters, configPath: options.configPath };
+
+  const gateway = new Gateway({
+    config,
+    adapters,
+    configPath: options.configPath,
+    uiDir: options.uiDir ?? resolveUiDir(),
+    version: VERSION,
+    onSaveConfig: async (next) => {
+      if (options.configPath) {
+        writeConfig(options.configPath, next);
+      }
+      await applyAdapterChanges(adapters, context.config, next);
+      context.config = next;
+      gateway.updateConfig(next);
+    },
+    onReloadFromDisk: async () => {
+      if (!options.configPath) {
+        throw new Error("No config path configured");
+      }
+      const reloaded = loadConfig(options.configPath);
+      if (!reloaded.config) {
+        throw new Error(reloaded.errors.map((e) => e.message).join("; ") || "Reload failed");
+      }
+      await applyAdapterChanges(adapters, context.config, reloaded.config);
+      context.config = reloaded.config;
+      gateway.updateConfig(reloaded.config);
+      return { warnings: reloaded.warnings.map((w) => w.message) };
+    },
+  });
+
+  context.gateway = gateway;
   await gateway.start();
 
   logger.info(
-    `Ready. ${connected}/${adapters.size} servers connected.${failed > 0 ? ` ${failed} server(s) in error state.` : ""}`,
+    `Ready. ${connected}/${adapters.size} servers connected.${failed > 0 ? ` ${failed} server(s) in error state.` : ""} UI: http://${config.host}:${config.port}/`,
   );
 
-  return { config, gateway, adapters };
+  return context;
 }
 
 /**
@@ -125,4 +218,9 @@ function getAdapterType(adapter: ServerAdapter): string {
   if (adapter instanceof StdioAdapter) return "stdio";
   if (adapter instanceof HttpAdapter) return "http";
   return "unknown";
+}
+
+function comparableServer(server: ServerConfig): Record<string, unknown> {
+  const { enabled, ...rest } = server;
+  return { enabled: enabled !== false, ...rest };
 }

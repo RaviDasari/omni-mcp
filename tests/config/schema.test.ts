@@ -25,6 +25,11 @@ describe("Config Schema", () => {
         expect(result.data.port).toBe(6317);
         expect(result.data.host).toBe("127.0.0.1");
         expect(result.data.defaultProfile).toBe("default");
+        expect(result.data.trafficLog).toEqual({
+          enabled: true,
+          retentionDays: 7,
+          maxBytes: 5242880,
+        });
       }
     });
 
@@ -67,6 +72,11 @@ describe("Config Schema", () => {
         security: {
           unknownTokenPolicy: "reject",
         },
+        trafficLog: {
+          enabled: false,
+          retentionDays: 14,
+          maxBytes: 1048576,
+        },
       });
 
       expect(result.success).toBe(true);
@@ -74,6 +84,7 @@ describe("Config Schema", () => {
         expect(result.data.port).toBe(8080);
         expect(result.data.host).toBe("0.0.0.0");
         expect(result.data.security.unknownTokenPolicy).toBe("reject");
+        expect(result.data.trafficLog.retentionDays).toBe(14);
       }
     });
 

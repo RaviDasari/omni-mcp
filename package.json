@@ -26,13 +26,17 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "npm run build:web && tsup && node scripts/copy-ui.mjs",
+    "build:web": "npm --prefix web run build",
     "dev": "tsup --watch",
+    "dev:ui": "npm --prefix web run dev",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
+    "lint:web": "npm --prefix web run lint",
     "start": "node dist/cli/index.js start",
+    "dev:start": "npm run build && node dist/cli/index.js start --foreground",
     "prepack": "npm run build",
     "prepare": "husky",
     "release": "semantic-release"

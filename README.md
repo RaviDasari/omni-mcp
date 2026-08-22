@@ -17,11 +17,14 @@ npx omni-mcp-manager init --import
 # 2. Start the gateway
 npx omni-mcp-manager start
 
-# 3. Point your IDE to the gateway (get copy-paste snippets)
+# 3. Open the local UI (no login)
+#    http://127.0.0.1:6317/
+
+# 4. Point your IDE to the gateway (get copy-paste snippets)
 npx omni-mcp-manager ide-snippets
 ```
 
-That's it. All your AI clients now share a single, managed MCP endpoint at `http://127.0.0.1:6317/mcp`.
+That's it. All your AI clients now share a single, managed MCP endpoint at `http://127.0.0.1:6317/mcp`. Manage servers, profiles, and tokens in the local UI at `http://127.0.0.1:6317/` (no login; writes only from localhost).
 
 ## 🤯 Why Developers Love This
 
@@ -199,7 +202,7 @@ Give your CI bot its own token with access only to deployment tools:
 
 ## 🎯 Target Scope & Roadmap
 
-- **Phase 1 (Current Focus)**: Single client-side proxy manager optimizing developer workflows in Cursor, VS Code, Claude Desktop, and local environments.
+- **Phase 1 (Current Focus)**: Single client-side proxy manager with a local web UI (no login) plus CLI, optimizing developer workflows in Cursor, VS Code, Claude Desktop, and local environments.
 - **Phase 2 (Team Expansion)**: Standalone team cloud service wrapping multiple shared MCPs with integrated load balancing, web UI, and OAuth.
 - **Phase 3 (Enterprise Platform)**: Full multi-tenant SaaS platform featuring auto-scaling regional proxies, enterprise compliance toggles, and AI-driven automated tool discovery.
 
@@ -215,6 +218,8 @@ Full specs are available in [`docs/specs/`](./docs/specs/):
 - [Resilience](./docs/specs/05-resilience.md)
 - [CLI](./docs/specs/06-cli.md)
 - [IDE Integration](./docs/specs/07-ide-integration.md)
+- [Web UI](./docs/specs/08-web-ui.md)
+- [Traffic logs](./docs/specs/09-traffic-logs.md)
 
 ## Contributing
 

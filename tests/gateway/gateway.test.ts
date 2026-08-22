@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Gateway } from "../../src/gateway/gateway.js";
 import type { ServerAdapter, ServerStatus, Tool, ToolResult } from "../../src/transport/types.js";
 import type { OmniMcpConfig } from "../../src/config/schema.js";
@@ -52,6 +55,7 @@ function makeConfig(): OmniMcpConfig {
       cursor: { profile: "admin", disabled: false },
     },
     security: { unknownTokenPolicy: "fallback-to-default" },
+    trafficLog: { enabled: true, retentionDays: 7, maxBytes: 5242880 },
   };
 }
 
@@ -78,7 +82,11 @@ describe("Gateway", () => {
     const config = makeConfig();
     config.port = 6399;
 
-    gateway = new Gateway({ config, adapters });
+    gateway = new Gateway({
+      config,
+      adapters,
+      trafficLogDir: mkdtempSync(join(tmpdir(), "omni-mcp-traffic-")),
+    });
     await gateway.start();
     baseUrl = "http://127.0.0.1:6399";
   });

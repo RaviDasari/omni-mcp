@@ -1,0 +1,14 @@
+---
+description: React/shadcn component and theming conventions for the web UI
+globs: web/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# UI Components
+
+- Functional components with TypeScript prop interfaces; avoid `any`.
+- Prefer shadcn primitives from `@/components/ui/` (`Button`, `Card`, `Dialog`, `Input`, `Select`, `Badge`, `Table`).
+- Style with Tailwind plus CSS variables: `--foreground`, `--background`, `--card-bg`, `--accent-primary`, `--highlight`, `--border-color`, `--muted`.
+- Icons: lucide-react first; `react-icons/fa` only when needed.
+- Use `cn()` from `@/lib/utils` to merge classes.
+- Handle loading and error states on every data fetch.

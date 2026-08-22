@@ -103,7 +103,7 @@ async function runForeground(options: StartOptions): Promise<void> {
 
   let context: AppContext;
   try {
-    context = await startApp(config);
+    context = await startApp(config, { configPath: options.config });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     process.stderr.write(`[omni-mcp] FATAL: ${message}\n`);
@@ -123,14 +123,15 @@ async function runForeground(options: StartOptions): Promise<void> {
   process.on("SIGINT",  () => shutdown("SIGINT"));
 
   process.on("SIGHUP", () => {
-    process.stdout.write("[omni-mcp] Received SIGHUP. Reloading...\n");
-    const reloaded = loadConfig(options.config);
-    if (reloaded.config) {
-      context.config = reloaded.config;
-      context.gateway.updateConfig(reloaded.config);
-      process.stdout.write("[omni-mcp] Reload complete.\n");
-    } else {
-      process.stderr.write("[omni-mcp] Reload failed. Keeping current config.\n");
-    }
+    void (async () => {
+      process.stdout.write("[omni-mcp] Received SIGHUP. Reloading...\n");
+      try {
+        await context.gateway.reloadFromDisk();
+        process.stdout.write("[omni-mcp] Reload complete.\n");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        process.stderr.write(`[omni-mcp] Reload failed: ${message}. Keeping current config.\n`);
+      }
+    })();
   });
 }

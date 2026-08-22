@@ -6,6 +6,7 @@ const envVarsSchema = z.record(z.string(), z.string());
 
 const stdioServerSchema = z.object({
   type: z.literal("stdio"),
+  enabled: z.boolean().default(true),
   command: z.string().min(1, "command is required"),
   args: z.array(z.string()).default([]),
   maxRestarts: z.number().int().min(0).default(3),
@@ -23,6 +24,7 @@ const httpAuthSchema = z.object({
 
 const httpServerSchema = z.object({
   type: z.literal("http"),
+  enabled: z.boolean().default(true),
   url: z.string().url("url must be a valid URL"),
   auth: httpAuthSchema.optional(),
   timeoutMs: z.number().int().min(0).default(30000),
@@ -58,6 +60,14 @@ const securitySchema = z.object({
     .default("fallback-to-default"),
 });
 
+// --- Traffic log schema ---
+
+const trafficLogSchema = z.object({
+  enabled: z.boolean().default(true),
+  retentionDays: z.number().int().min(1).max(30).default(7),
+  maxBytes: z.number().int().min(65536).max(52428800).default(5242880),
+});
+
 // --- Top-level config schema ---
 
 export const configSchema = z.object({
@@ -78,6 +88,11 @@ export const configSchema = z.object({
     { message: 'A "default" token is required' },
   ),
   security: securitySchema.default({ unknownTokenPolicy: "fallback-to-default" }),
+  trafficLog: trafficLogSchema.default({
+    enabled: true,
+    retentionDays: 7,
+    maxBytes: 5242880,
+  }),
 });
 
 // --- Exported types ---
@@ -88,4 +103,5 @@ export type ServerConfig = z.infer<typeof serverSchema>;
 export type ProfileConfig = z.infer<typeof profileSchema>;
 export type TokenConfig = z.infer<typeof tokenSchema>;
 export type SecurityConfig = z.infer<typeof securitySchema>;
+export type TrafficLogConfig = z.infer<typeof trafficLogSchema>;
 export type OmniMcpConfig = z.infer<typeof configSchema>;

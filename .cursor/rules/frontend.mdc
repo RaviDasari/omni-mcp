@@ -1,0 +1,34 @@
+---
+description: Vite frontend conventions — TypeScript, React, shadcn, Tailwind
+globs: web/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend Conventions
+
+## Stack
+
+- **Vite** + **React 19** + **TypeScript** (strict — no `any` unless unavoidable)
+- **Tailwind CSS 4** for styling
+- **shadcn/ui + Radix UI** for UI primitives (use these before building custom components)
+- **react-router** for pages in `web/src/pages/`
+- English copy only (no i18n)
+
+## File Layout
+
+```
+web/src/
+  pages/                  # Route pages
+  components/             # Shared React components
+    ui/                   # shadcn/Radix primitives (don't modify directly)
+  lib/                    # utils, API client
+  hooks/                  # Custom hooks
+```
+
+## API Calls
+
+The UI is served from the gateway. Call `/api/...` on the same origin (Vite dev proxies `/api` to `http://127.0.0.1:6317`). Do not hardcode `localhost:6317` in components.
+
+## Auth
+
+There is **no login page**. Do not add AuthContext, UserInfo, or `/login`.

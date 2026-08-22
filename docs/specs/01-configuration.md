@@ -50,6 +50,9 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
     "filesystem": {
       "type": "stdio",
 
+      // Optional. Globally expose/start this server. Default: true.
+      "enabled": true,
+
       // Required. Executable name or path.
       "command": "npx",
 
@@ -79,6 +82,9 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
   "servers": {
     "production-db": {
       "type": "http",
+
+      // Optional. Globally expose/connect to this server. Default: true.
+      "enabled": true,
 
       // Required. Full base URL of the remote MCP server.
       "url": "https://internal.tools/mcp",

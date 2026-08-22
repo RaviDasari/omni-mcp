@@ -1,8 +1,9 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { configSchema, type OmniMcpConfig } from "./schema.js";
-import { resolveEnvVariables, formatEnvErrors } from "./env.js";
+import { resolveEnvVariables } from "./env.js";
 import { DEFAULT_CONFIG_PATH } from "../cli/config-path.js";
+import { collectCrossFieldIssues } from "./validate.js";
 
 export interface ValidationError {
   message: string;
@@ -67,68 +68,7 @@ export function loadConfig(
   }
 
   const config = parseResult.data;
-
-  // Cross-field validation: profile allow lists reference existing servers
-  for (const [profileName, profile] of Object.entries(config.profiles)) {
-    for (const serverName of profile.allow) {
-      if (serverName !== "*" && !(serverName in config.servers)) {
-        errors.push({
-          message: `profiles.${profileName}.allow: unknown server "${serverName}"`,
-        });
-      }
-    }
-  }
-
-  // Cross-field validation: tokens reference existing profiles
-  for (const [tokenName, token] of Object.entries(config.tokens)) {
-    if (!(token.profile in config.profiles)) {
-      errors.push({
-        message: `tokens.${tokenName}.profile: unknown profile "${token.profile}"`,
-      });
-    }
-  }
-
-  // Cross-field validation: defaultProfile exists
-  if (!(config.defaultProfile in config.profiles)) {
-    errors.push({
-      message: `defaultProfile: unknown profile "${config.defaultProfile}"`,
-    });
-  }
-
-  // Warnings: unreachable profiles (no token maps to them)
-  const usedProfiles = new Set(
-    Object.values(config.tokens).map((t) => t.profile),
-  );
-  usedProfiles.add(config.defaultProfile);
-  for (const profileName of Object.keys(config.profiles)) {
-    if (!usedProfiles.has(profileName)) {
-      warnings.push({
-        message: `Profile "${profileName}" is defined but no token maps to it`,
-      });
-    }
-  }
-
-  // Warnings: unused servers (not in any profile)
-  const usedServers = new Set<string>();
-  for (const profile of Object.values(config.profiles)) {
-    if (profile.allow.includes("*")) {
-      // Wildcard means all servers are used
-      for (const serverName of Object.keys(config.servers)) {
-        usedServers.add(serverName);
-      }
-    } else {
-      for (const s of profile.allow) {
-        usedServers.add(s);
-      }
-    }
-  }
-  for (const serverName of Object.keys(config.servers)) {
-    if (!usedServers.has(serverName)) {
-      warnings.push({
-        message: `Server "${serverName}" is defined but not included in any profile allow list`,
-      });
-    }
-  }
+  collectCrossFieldIssues(config, errors, warnings);
 
   if (errors.length > 0) {
     return { errors, warnings };

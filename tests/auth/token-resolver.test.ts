@@ -29,6 +29,7 @@ function makeConfig(overrides: Partial<OmniMcpConfig> = {}): OmniMcpConfig {
       disabled: { profile: "admin", disabled: true },
     },
     security: { unknownTokenPolicy: "fallback-to-default" },
+    trafficLog: { enabled: true, retentionDays: 7, maxBytes: 5242880 },
     ...overrides,
   };
 }

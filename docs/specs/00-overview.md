@@ -15,7 +15,6 @@
 
 - No cloud or SaaS hosting.
 - No team-shared deployments (Phase 2).
-- No web management UI (Phase 2).
 - No OAuth authentication (Phase 2).
 - No tool-level granularity within a server (server-level allow/deny only).
 - No multi-tenancy or enterprise compliance features (Phase 3).
@@ -61,13 +60,13 @@
 - Token + profile access control.
 - `stdio` and `http` upstream transport bridging.
 - CLI management (`start`, `status`, `stop`).
+- Local web management UI (no login) served at `http://127.0.0.1:6317/`.
 - Crash isolation and auto-restart.
 
 ### Phase 2 — Team Cloud Service (future)
 - Standalone team-shared deployment.
-- Web management UI for profile/token administration.
+- Shared web UI with OAuth for team profile/token administration.
 - Load balancing across shared MCP server pools.
-- OAuth support.
 
 ### Phase 3 — Enterprise SaaS (future)
 - Multi-tenant platform with regional proxies.
@@ -87,3 +86,5 @@
 | [05-resilience.md](./05-resilience.md) | Crash isolation, restart policy, error responses |
 | [06-cli.md](./06-cli.md) | CLI commands, flags, and output format |
 | [07-ide-integration.md](./07-ide-integration.md) | IDE setup, auto-discovery, per-client profiles |
+| [08-web-ui.md](./08-web-ui.md) | Local management UI and `/api` routes |
+| [09-traffic-logs.md](./09-traffic-logs.md) | MCP tool-call traffic log, UI filters, retention |

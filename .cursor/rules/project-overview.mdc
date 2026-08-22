@@ -1,0 +1,18 @@
+---
+description: omni-mcp project overview — CLI, gateway, and local web UI
+alwaysApply: true
+---
+
+# omni-mcp — Project Context
+
+Local MCP proxy gateway (TypeScript/Node) plus a management UI. No login.
+
+| Piece | Details |
+|-------|---------|
+| Gateway | `src/` — HTTP on port `6317` (`/mcp` MCP, `/api` JSON, `/` UI) |
+| CLI | `src/cli/` — `omni-mcp start`, `status`, `add`, `reload`, … |
+| Web UI | `web/` — Vite + React + shadcn, built into `dist/ui` |
+
+Default bind is `127.0.0.1`. Mutating `/api` routes require a loopback client. Binding `0.0.0.0` without auth is unsafe.
+
+Specs live in `docs/specs/`. Check the relevant spec before changing behavior.

@@ -13,6 +13,7 @@ Please also follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 git clone https://github.com/RaviDasari/omni-mcp.git
 cd omni-mcp
 npm ci
+npm --prefix web ci
 ```
 
 Git hooks are installed via `husky` on `npm ci` / `npm install`. The `commit-msg` hook lint-checks Conventional Commits locally.
@@ -24,7 +25,8 @@ Git hooks are installed via `husky` on `npm ci` / `npm install`. The `commit-msg
 | `npm run lint` | Typecheck with `tsc --noEmit` |
 | `npm test` | Run the Vitest suite once |
 | `npm run test:watch` | Vitest in watch mode |
-| `npm run build` | Bundle with tsup |
+| `npm run build` | Build the web UI, bundle with tsup, copy `dist/ui` |
+| `npm run dev:ui` | Vite UI on port 5173 (proxies `/api` to the gateway) |
 | `npm start` | Run the CLI `start` command from `dist` |
 
 Do not bump `package.json` / `package-lock.json` version by hand. **semantic-release owns the version** on `main`.
