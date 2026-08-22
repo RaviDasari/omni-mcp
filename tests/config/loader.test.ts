@@ -49,6 +49,30 @@ describe("Config Loader", () => {
       expect(result.errors.some((error) => error.message.includes("PROD_DB_JWT"))).toBe(true);
     });
 
+    it("downgrades unresolved references inside disabled servers to warnings", () => {
+      const dir = mkdtempSync(join(tmpdir(), "omni-loader-disabled-"));
+      tempDirs.push(dir);
+      const configPath = join(dir, "config.json");
+      writeFileSync(configPath, JSON.stringify({
+        servers: {
+          github: {
+            type: "stdio",
+            enabled: false,
+            command: "github-mcp",
+            env: { GITHUB_TOKEN: "$GITHUB_TOKEN" },
+          },
+        },
+        profiles: { default: { allow: ["*"] } },
+        tokens: { default: { profile: "default" } },
+      }));
+
+      const result = loadConfig(configPath, {});
+
+      expect(result.errors).toEqual([]);
+      expect(result.config).toBeDefined();
+      expect(result.warnings.some((warning) => warning.message.includes("GITHUB_TOKEN"))).toBe(true);
+    });
+
     it("reports validation errors for invalid config", () => {
       const result = loadConfig(resolve(FIXTURES_DIR, "invalid-config.json"));
 

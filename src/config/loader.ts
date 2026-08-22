@@ -73,10 +73,14 @@ export function resolveConfig(
     const store = createSecretStore(storeConfig, options);
     const result = resolveEnvVariables(rawConfig, options.env ?? process.env, store);
     resolved = result.resolved;
+    const disabled = disabledServerPrefixes(rawConfig);
     for (const envErr of result.errors) {
-      errors.push({
-        message: `${envErr.path}: neither the process environment nor the active secret store defines "${envErr.variable}"`,
-      });
+      const message = `${envErr.path}: neither the process environment nor the active secret store defines "${envErr.variable}"`;
+      if (disabled.some((prefix) => envErr.path.startsWith(prefix))) {
+        warnings.push({ message: `${message} — server is disabled` });
+      } else {
+        errors.push({ message });
+      }
     }
   } catch (error) {
     errors.push({
@@ -110,6 +114,21 @@ export function resolveConfig(
     errors,
     warnings,
   };
+}
+
+/**
+ * A disabled server never spawns, so its unresolved references must not block startup.
+ */
+function disabledServerPrefixes(rawConfig: Record<string, unknown>): string[] {
+  const servers = rawConfig.servers;
+  if (!servers || typeof servers !== "object" || Array.isArray(servers)) return [];
+  return Object.entries(servers as Record<string, unknown>)
+    .filter(([, server]) =>
+      Boolean(server) &&
+      typeof server === "object" &&
+      (server as { enabled?: unknown }).enabled === false,
+    )
+    .map(([name]) => `servers.${name}.`);
 }
 
 function overlayRawConfig(defaulted: unknown, raw: unknown): unknown {

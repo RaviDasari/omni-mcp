@@ -18,7 +18,9 @@ an exclusive Keychain backend. Only one backend is active at a time.
 - Lookup order per reference: `process.env[NAME]` when non-empty, then the active store. A store
   value is used when the environment value is unset or empty.
 - A name that resolves to nothing in both places is a load-time error. `omni-mcp start`,
-  `omni-mcp validate`, and reload all fail with the config path and variable name.
+  `omni-mcp validate`, and reload all fail with the config path and variable name. References
+  inside a server with `"enabled": false` are reported as warnings instead, because that server
+  never spawns.
 - Store values are **write-only**. No CLI command, `/api` route, or UI view returns a saved value.
 - File-backend values live only in `~/.config/omni-mcp/secrets.json`. Keychain-backend values live
   only as generic-password items under the configured Keychain service. Backend migration copies
