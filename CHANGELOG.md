@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/RaviDasari/omni-mcp/compare/v1.2.0...v1.2.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* keep startup working when a disabled server has unresolved refs ([292b088](https://github.com/RaviDasari/omni-mcp/commit/292b08824f338003ba10e7737375d3c0394418ce))
+
 # [1.2.0](https://github.com/RaviDasari/omni-mcp/compare/v1.1.0...v1.2.0) (2026-08-22)
 
 
