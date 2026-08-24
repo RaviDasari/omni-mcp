@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/RaviDasari/omni-mcp/compare/v1.2.1...v1.3.0) (2026-08-24)
+
+
+### Features
+
+* bring CLI to web UI management parity and harden release ([1174913](https://github.com/RaviDasari/omni-mcp/commit/117491381da42e30ef2137802945afc0f1a8b2d4))
+
 ## [1.2.1](https://github.com/RaviDasari/omni-mcp/compare/v1.2.0...v1.2.1) (2026-08-22)
 
 
