@@ -1,4 +1,8 @@
 import { readPidFile } from "../pid.js";
+import { resolve } from "node:path";
+import { VERSION } from "../../version.js";
+import type { OmniMcpConfig } from "../../config/index.js";
+import { GatewayClient, gatewayUrlFromConfig } from "../http-client.js";
 
 interface StatusOptions {
   config: string;
@@ -23,28 +27,66 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
 
   // Query the health endpoint of the running instance
   try {
-    const response = await fetch("http://127.0.0.1:6317/_health");
-    const health = await response.json() as Record<string, unknown>;
+    const client = new GatewayClient(gatewayUrlFromConfig(options.config));
+    const health = await client.health();
+    if (!health.configPath || resolve(health.configPath) !== resolve(options.config)) {
+      throw new Error(`Running instance uses ${health.configPath ?? "an unknown config path"}`);
+    }
+    const { config } = await client.request<{ config: OmniMcpConfig }>("/api/config");
+    const servers = health.servers;
+    const enrichedServers = Object.fromEntries(await Promise.all(
+      Object.entries(servers).map(async ([name, info]) => {
+        let toolCount = 0;
+        if (info.status === "connected") {
+          try {
+            const value = await client.request<{ tools: unknown[] }>(
+              `/api/servers/${encodeURIComponent(name)}/tools`,
+            );
+            toolCount = value.tools.length;
+          } catch {
+            // Status remains useful when one adapter cannot list tools.
+          }
+        }
+        return [name, { ...info, toolCount }];
+      }),
+    )) as Record<string, typeof servers[string] & { toolCount: number }>;
+    const payload = {
+      version: health.version ?? VERSION,
+      pid,
+      uptime: health.uptime,
+      address: `http://${health.host}:${health.port}`,
+      configPath: resolve(options.config),
+      defaultProfile: health.defaultProfile,
+      tokens: config.tokens,
+      servers: enrichedServers,
+    };
 
     if (options.json) {
-      process.stdout.write(JSON.stringify({ pid, ...health }, null, 2) + "\n");
+      process.stdout.write(JSON.stringify(payload) + "\n");
     } else {
-      process.stdout.write(`omni-mcp  v0.1.0  PID: ${pid}  Uptime: ${formatUptime(health.uptime as number)}\n`);
-      process.stdout.write(`Listening: http://127.0.0.1:6317\n\n`);
+      process.stdout.write(`omni-mcp  v${payload.version}  PID: ${pid}  Uptime: ${formatUptime(payload.uptime)}\n`);
+      process.stdout.write(`Listening: ${payload.address}\n`);
+      process.stdout.write(`Config: ${payload.configPath}\n`);
+      process.stdout.write(`Default profile: ${payload.defaultProfile}\n\n`);
 
-      const servers = health.servers as Record<string, { status: string; transport: string; restarts: number }>;
-      if (servers) {
+      process.stdout.write(`Tokens (${Object.keys(config.tokens).length}):\n`);
+      for (const [name, token] of Object.entries(config.tokens)) {
+        process.stdout.write(`  ${name}  →  ${token.profile}${token.disabled ? " (disabled)" : ""}\n`);
+      }
+      process.stdout.write("\n");
+
+      if (enrichedServers) {
         process.stdout.write("Servers:\n");
-        process.stdout.write("  NAME            TYPE   STATUS     RESTARTS\n");
-        for (const [name, info] of Object.entries(servers)) {
+        process.stdout.write("  NAME            TYPE   STATUS     RESTARTS  TOOLS\n");
+        for (const [name, info] of Object.entries(enrichedServers)) {
           process.stdout.write(
-            `  ${name.padEnd(15)} ${info.transport.padEnd(6)} ${info.status.padEnd(10)} ${info.restarts ?? "—"}\n`,
+            `  ${name.padEnd(15)} ${info.transport.padEnd(6)} ${info.status.padEnd(10)} ${String(info.restarts ?? "—").padEnd(9)} ${info.toolCount}\n`,
           );
         }
       }
     }
-  } catch {
-    process.stderr.write("[omni-mcp] Failed to reach running instance.\n");
+  } catch (error) {
+    process.stderr.write(`[omni-mcp] Failed to reach matching running instance: ${error instanceof Error ? error.message : "unknown error"}.\n`);
     process.exit(1);
   }
 }

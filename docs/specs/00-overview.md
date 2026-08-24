@@ -91,3 +91,4 @@
 | [09-traffic-logs.md](./09-traffic-logs.md) | MCP tool-call traffic log, UI filters, retention |
 | [10-managed-cli.md](./10-managed-cli.md) | Managed CLI for opt-in upstream tools |
 | [11-managed-secrets.md](./11-managed-secrets.md) | Secret store, `$NAME` references, CLI/API/UI |
+| [12-cli-parity-release.md](./12-cli-parity-release.md) | CLI management parity, hybrid targeting, compatibility, and release hardening |

@@ -1,6 +1,7 @@
 import type { HttpServerConfig } from "../config/index.js";
 import type { ServerAdapter, ServerStatus, Tool, ToolResult } from "./types.js";
 import { Logger } from "../logger.js";
+import { VERSION } from "../version.js";
 
 export class HttpAdapter implements ServerAdapter {
   readonly name: string;
@@ -35,7 +36,7 @@ export class HttpAdapter implements ServerAdapter {
       const initResult = await this.sendMcpRequest("initialize", {
         protocolVersion: "2024-11-05",
         capabilities: {},
-        clientInfo: { name: "omni-mcp", version: "0.1.0" },
+        clientInfo: { name: "omni-mcp", version: VERSION },
       });
 
       // Send initialized notification

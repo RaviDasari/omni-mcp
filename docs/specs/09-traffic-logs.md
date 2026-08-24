@@ -235,6 +235,7 @@ Filter option lists: fixed sources (`mcp`, `cli`) plus token names, profile name
 
 ## Open Questions
 
-- [ ] Should `omni-mcp` CLI grow a `traffic` subcommand, or is the UI enough?
+- Resolved: `omni-mcp logs list|summary|clear` provides CLI parity with the UI; `clear` requires
+  explicit confirmation as specified in spec 12.
 - [ ] Live auto-refresh interval (e.g. 10s) vs Reload-only — currently Reload-only
 - [ ] Whether `durationMs` should include gateway queue time vs upstream-only (specified as wall time around `adapter.callTool`, including local deny paths as near-zero)

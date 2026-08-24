@@ -193,6 +193,13 @@ accepted and is the default when `--apply` is absent.
 
 Human output shows names and statuses only. Values are never echoed.
 
+Secret commands use the hybrid target rule from spec 12. A matching running gateway performs sync
+and migrations through the loopback API so references are re-resolved and affected adapters are
+hot-applied. Otherwise the selected config/store is handled offline and the CLI reports that a
+running gateway still needs reload. Backend migration supports an explicit preview before apply.
+Delete and apply/migration actions prompt on a TTY; scripts use `--yes`. Secret values never move
+through argv or JSON output.
+
 ### UI
 
 Route `/secrets`, reachable from the navbar kebab menu (and the mobile menu), not a primary tab.

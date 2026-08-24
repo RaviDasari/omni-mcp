@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, openSync, closeSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { loadConfig } from "../../config/index.js";
 import { startApp, stopApp, type AppContext } from "../../app.js";
 import { setLogLevel, type LogLevel } from "../../logger.js";
-import { writePidFile, removePidFile } from "../pid.js";
+import { writePidFile, removePidFile, writeRuntimeMetadata } from "../pid.js";
 import { DEFAULT_CONFIG_PATH } from "../config-path.js";
 
 const DAEMON_DIR = join(homedir(), ".omni-mcp");
@@ -55,6 +55,13 @@ function daemonize(options: StartOptions): void {
 
   child.unref();
   writePidFile(child.pid);
+  const loaded = loadConfig(options.config).config;
+  writeRuntimeMetadata({
+    pid: child.pid,
+    configPath: resolve(options.config),
+    host: options.host ?? loaded?.host ?? "127.0.0.1",
+    port: options.port ? parseInt(options.port, 10) : (loaded?.port ?? 6317),
+  });
 
   process.stdout.write(`[omni-mcp] Started (PID ${child.pid}). Logs: ${LOG_FILE}\n`);
 }
@@ -111,6 +118,12 @@ async function runForeground(options: StartOptions): Promise<void> {
   }
 
   writePidFile();
+  writeRuntimeMetadata({
+    pid: process.pid,
+    configPath: resolve(options.config),
+    host: config.host,
+    port: config.port,
+  });
 
   const shutdown = async (signal: string) => {
     process.stdout.write(`\n[omni-mcp] Received ${signal}. Shutting down...\n`);

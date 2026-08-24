@@ -92,7 +92,7 @@ The unrecognized-token policy is configured via:
 ```jsonc
 {
   "security": {
-    // "fallback-to-default" (default for Phase 1) or "reject"
+    // "fallback-to-default" (compatibility default when omitted) or "reject"
     "unknownTokenPolicy": "fallback-to-default"
   }
 }
@@ -152,11 +152,16 @@ Set `"disabled": true` on the token entry. Requests using a disabled token recei
 
 ### Revoking / Removing a Token
 
-Remove the token entry from `omni-mcp.config.json` and restart (or hot-reload, if supported). The token becomes unknown and is handled by `unknownTokenPolicy`.
+Remove the token entry through the CLI/UI or from the selected config, then hot-reload (or restart).
+The token becomes unknown and is handled by `unknownTokenPolicy`.
 
-### Hot Reload (Phase 1 target)
+### Hot Reload
 
-The system SHOULD support live reload of the `tokens` block (and `profiles`) on `SIGHUP` or via `omni-mcp reload` CLI command, without restarting upstream server processes.
+`SIGHUP`, `omni-mcp config reload`, and the backward-compatible `omni-mcp reload` alias reload
+tokens and profiles as part of the complete config. Server changes are hot-applied too: affected
+adapters are disconnected, added or changed adapters are created and connected, and removed or
+disabled adapters are removed. The gateway process stays running; listener `host`/`port` changes
+still require restart. A failed reload keeps the prior usable runtime state.
 
 ---
 

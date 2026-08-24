@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_CONFIG_PATH } from "./config-path.js";
 import { runInstallSkill } from "./skill-installer.js";
 import type { Tool, ToolResult } from "../transport/types.js";
+import { GatewayClient, gatewayUrlFromConfig } from "./http-client.js";
 
 export interface ParamDef {
   cliName: string;
@@ -211,12 +212,14 @@ export async function runManagedCli(argv: string[]): Promise<number> {
         printCliHelp();
         return 0;
       }
-      const servers = await client.listServers();
-      printServerList(servers, parsed.json);
+      const response = await client.request<{ servers: CliServer[] }>("/api/cli/servers");
+      printServerList(response.servers, parsed.json);
       return 0;
     }
 
-    const response = await client.listTools(parsed.server);
+    const response = await client.request<ServerToolsResponse>(
+      `/api/cli/servers/${encodeURIComponent(parsed.server)}/tools`,
+    );
     const commands = buildCommandDefs(response.tools);
     if (!parsed.tool) {
       printCommandList(parsed.server, commands, parsed, usage);
@@ -240,7 +243,13 @@ export async function runManagedCli(argv: string[]): Promise<number> {
       ? await readStdin()
       : undefined;
     const toolArgs = parseToolArguments(command, parsed.toolArgs, stdinValue);
-    const result = await client.callTool(parsed.server, command.originalName, toolArgs);
+    const result = await client.request<ToolCallResponse>(
+      `/api/cli/servers/${encodeURIComponent(parsed.server)}/tools/call`,
+      {
+        method: "POST",
+        body: JSON.stringify({ tool: command.originalName, arguments: toolArgs }),
+      },
+    );
     recordUsage(parsed.server, command.originalName, usage);
     printToolResult(result.result, parsed);
     return result.result.isError ? 1 : 0;
@@ -326,60 +335,6 @@ function parseGlobalArgs(argv: string[]): ParsedCli {
   result.tool = positional[1];
   if (result.search) result.list = true;
   return result;
-}
-
-class GatewayClient {
-  constructor(private readonly baseUrl: string) {}
-
-  async listServers(): Promise<CliServer[]> {
-    const body = await this.request<{ servers: CliServer[] }>("/api/cli/servers");
-    return body.servers;
-  }
-
-  listTools(server: string): Promise<ServerToolsResponse> {
-    return this.request(`/api/cli/servers/${encodeURIComponent(server)}/tools`);
-  }
-
-  callTool(
-    server: string,
-    tool: string,
-    args: Record<string, unknown>,
-  ): Promise<ToolCallResponse> {
-    return this.request(`/api/cli/servers/${encodeURIComponent(server)}/tools/call`, {
-      method: "POST",
-      body: JSON.stringify({ tool, arguments: args }),
-    });
-  }
-
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${path}`, {
-        ...init,
-        headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-      });
-    } catch {
-      throw new Error(
-        `Cannot reach the omni-mcp gateway at ${this.baseUrl}. Start it with "omni-mcp start".`,
-      );
-    }
-    const body = await response.json().catch(() => ({})) as { error?: string };
-    if (!response.ok) throw new Error(body.error ?? `Gateway returned HTTP ${response.status}`);
-    return body as T;
-  }
-}
-
-function gatewayUrlFromConfig(configPath: string): string {
-  let port = 6317;
-  if (existsSync(configPath)) {
-    try {
-      const raw = JSON.parse(readFileSync(configPath, "utf8")) as { port?: unknown };
-      if (typeof raw.port === "number" && Number.isInteger(raw.port)) port = raw.port;
-    } catch {
-      // The gateway reports config errors; retain the default for connection discovery.
-    }
-  }
-  return `http://127.0.0.1:${port}`;
 }
 
 function printServerList(servers: CliServer[], jsonOutput: boolean): void {

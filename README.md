@@ -24,7 +24,7 @@ npx omni-mcp-manager start
 npx omni-mcp-manager ide-snippets
 ```
 
-That's it. All your AI clients now share a single, managed MCP endpoint at `http://127.0.0.1:6317/mcp`. Manage servers, profiles, and tokens in the local UI at `http://127.0.0.1:6317/` (no login; writes only from localhost).
+That's it. All your AI clients now share a single, managed MCP endpoint at `http://127.0.0.1:6317/mcp`. Manage servers, profiles, and tokens in the local UI at `http://127.0.0.1:6317/` (no login; management is restricted to localhost).
 
 ## 🤯 Why Developers Love This
 
@@ -43,8 +43,8 @@ That's it. All your AI clients now share a single, managed MCP endpoint at `http
 - **Auto-Discovery & Import**: Detect existing MCP configs from Cursor, VS Code, and Claude Desktop. Import your server fleet in one command.
 - **Transport Bridging**: Seamlessly map local transports (`stdio`) and remote streamable HTTP endpoints into a standardized, secure connection pane.
 - **Crash & Concurrency Protection**: Isolate individual servers behind dedicated internal proxies. Prevent cascading failures and stop misbehaving tools from crashing your entire agent workspace.
-- **Secured Workflows**: Inject secure authentication tokens (JWT or OAuth) directly at the proxy layer to safeguard against tool-based token theft and local environment exploits.
-- **Hot Reload**: Change tokens, profiles, or add servers without restarting. Your IDE sessions stay connected.
+- **Secured Workflows**: Inject JWT authentication tokens at the proxy layer while keeping values in a write-only local store. OAuth is a future capability.
+- **Hot Reload**: Change tokens, profiles, secrets, or servers without restarting the gateway. Affected upstream adapters reconnect while IDE sessions stay connected.
 
 ## 🏗️ Architecture Overview
 
@@ -98,7 +98,8 @@ This scans Cursor, VS Code, and Claude Desktop configs, imports all servers, and
 
 ### Manual Config
 
-Create `omni-mcp.config.json`:
+Create `~/.config/omni-mcp/config.json` (the CLI default), or select another file with
+`--config <path>`:
 
 ```json
 {
@@ -199,10 +200,13 @@ Give your CI bot its own token with access only to deployment tools:
 | `omni-mcp start` | Start the proxy gateway |
 | `omni-mcp stop` | Graceful shutdown |
 | `omni-mcp status` | Show server health, active connections, profiles |
-| `omni-mcp add <name>` | Add a server to config via CLI |
-| `omni-mcp remove <name>` | Remove a server from config |
-| `omni-mcp reload` | Hot-reload tokens and profiles without restart |
-| `omni-mcp validate` | Check config validity (great for CI/pre-commit) |
+| `omni-mcp server …` | List/show/add/update/remove/clone and toggle servers or CLI opt-in |
+| `omni-mcp profile …` | List/show/create/update/delete profiles |
+| `omni-mcp token …` | List/show/create/update/delete and enable/disable tokens |
+| `omni-mcp config …` | Show/apply/validate/reload config |
+| `omni-mcp logs …` | Query, summarize, or explicitly clear traffic logs |
+| `omni-mcp tools …` | Direct Playground discovery and calls for enabled servers |
+| `omni-mcp add/remove/validate/reload` | Backward-compatible aliases |
 | `omni-mcp ide-snippets` | Print IDE-specific setup snippets |
 | `omni-mcp cli <server> <tool>` | Discover and invoke tools from CLI-enabled MCP servers |
 | `omni-mcp cli install-skill` | Teach Cursor and Claude to use the managed CLI |
@@ -241,6 +245,7 @@ Full specs are available in [`docs/specs/`](./docs/specs/):
 - [Traffic logs](./docs/specs/09-traffic-logs.md)
 - [Managed MCP CLI](./docs/specs/10-managed-cli.md)
 - [Managed secrets](./docs/specs/11-managed-secrets.md)
+- [CLI parity and release contract](./docs/specs/12-cli-parity-release.md)
 
 ## Contributing
 

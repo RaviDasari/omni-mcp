@@ -4,6 +4,7 @@ import { createInterface } from "node:readline";
 import type { StdioServerConfig } from "../config/index.js";
 import type { ServerAdapter, ServerStatus, Tool, ToolResult } from "./types.js";
 import { Logger } from "../logger.js";
+import { VERSION } from "../version.js";
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
@@ -145,7 +146,7 @@ export class StdioAdapter implements ServerAdapter {
     const result = await this.sendRequest("initialize", {
       protocolVersion: "2024-11-05",
       capabilities: {},
-      clientInfo: { name: "omni-mcp", version: "0.1.0" },
+      clientInfo: { name: "omni-mcp", version: VERSION },
     });
 
     // Send initialized notification

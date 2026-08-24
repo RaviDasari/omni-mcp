@@ -88,16 +88,18 @@ Merge commits from GitHub (`Merge pull request #…`) are fine on `main`; featur
 
 1. Branch from `main`.
 2. Keep the change focused; include tests when behavior changes.
-3. Run `npm run lint` and `npm test` before you push.
+3. Run `npm run lint`, `npm run lint:web`, `npm test`, and `npm run build` before you push.
 4. Fill in the pull request template.
-5. Wait for the **CI** workflow (lint, tests, commitlint on the PR range).
+5. Wait for the **CI** workflow (root typecheck/tests, Web lint, build, and commitlint on the PR
+   range).
 
 ## Releases
 
 On every push to `main`, the **Release** workflow runs tests and then **semantic-release**:
 
 - Analyzes Conventional Commits since the last git tag
-- Bumps the version, updates `CHANGELOG.md`, publishes to npm with provenance
+- Runs the release verification gate, then bumps the version, updates `CHANGELOG.md`, and publishes
+  the packed npm artifact with provenance
 - Creates a GitHub Release and commits version files with `chore(release): x.y.z [skip ci]`
 
 If there are no `feat` / `fix` / `perf` / breaking commits, nothing is published.

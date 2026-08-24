@@ -23,7 +23,12 @@ Port 6317 avoids common developer conflicts (`3000` React/Next.js, `5000` Flask,
 ### Binding Behavior
 
 - Default: binds to `127.0.0.1` only. The gateway is **not accessible from other machines** without explicit configuration.
-- To allow remote connections: set `"host": "0.0.0.0"` in config or use `--host 0.0.0.0`. A warning is printed at startup when binding to any non-loopback address.
+- To allow remote MCP connections: set `"host": "0.0.0.0"` in config or use
+  `--host 0.0.0.0`. A prominent warning is printed for every non-loopback bind: MCP is
+  network-accessible and binding without authentication is unsafe.
+- Non-loopback binding does not expose management. All mutations and sensitive management reads
+  (config, resource metadata, snippets, logs, secrets, Playground, and managed CLI routes) remain
+  loopback-only. Health/readiness endpoints remain available for probes.
 
 ---
 
@@ -37,6 +42,9 @@ GET  http://127.0.0.1:6317/mcp   (SSE stream for server→client messages)
 ```
 
 All MCP JSON-RPC messages are exchanged over this endpoint.
+
+POST bodies for `/mcp` and JSON `/api/*` routes are capped at **1 MiB (1,048,576 bytes)**.
+Oversized requests return HTTP `413`; malformed JSON within the limit returns `400`.
 
 ---
 

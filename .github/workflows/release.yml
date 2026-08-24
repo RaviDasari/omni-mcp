@@ -28,6 +28,7 @@ jobs:
       - run: npm ci
       - run: npm --prefix web ci
       - run: npm run lint
+      - run: npm run lint:web
       - run: npm test
       - run: npx semantic-release
         env:

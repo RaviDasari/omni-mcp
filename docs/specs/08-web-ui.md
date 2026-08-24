@@ -29,12 +29,16 @@ Tokens, Secrets, Profiles, and IDE live in the kebab menu. The compact mobile me
 
 ## JSON API
 
-Same origin as the gateway. Mutating methods (`PUT`, `POST`, `DELETE`) are **loopback-only**. `GET /api/traffic-logs*` is also loopback-only because token names appear in the payload (see [09-traffic-logs.md](./09-traffic-logs.md)). Every `/api/secrets*` route is loopback-only for all methods and rejects other clients with `403 { "error": "This endpoint is only available from localhost" }` (see [11-managed-secrets.md](./11-managed-secrets.md)).
+Same origin as the gateway. Mutating methods (`PUT`, `POST`, `DELETE`) are **loopback-only**.
+Sensitive reads are loopback-only too: config, server/profile/token metadata, IDE snippets, traffic
+logs, secrets, direct Playground tools, and managed CLI routes. They reject non-loopback clients
+with `403 { "error": "This endpoint is only available from localhost" }`. Health/readiness remain
+available for probes. JSON request bodies are capped at 1 MiB; oversized requests return `413`.
 
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/health` | Version, bind, uptime, adapter status |
-| GET | `/api/config` | Raw config: `$NAME` / `${NAME}` kept; literal env/JWT values redacted as `********` |
+| GET | `/api/config` | Loopback-only raw config: `$NAME` / `${NAME}` kept; literal env/JWT values redacted as `********` |
 | PUT | `/api/config` | Full replace of the **raw** document; omitted/redacted secrets keep previous values; resolved values are never persisted |
 | PUT | `/api/servers/:name` | Upsert one server, write file, hot-apply adapters |
 | PUT | `/api/servers/:name/enabled` | Globally enable or disable a server and hot-apply |
@@ -44,7 +48,7 @@ Same origin as the gateway. Mutating methods (`PUT`, `POST`, `DELETE`) are **loo
 | PUT | `/api/tokens/:name` | Upsert token |
 | DELETE | `/api/tokens/:name` | Cannot delete `default` |
 | POST | `/api/reload` | Reload from disk (same effect as SIGHUP) |
-| GET | `/api/ide-snippets?token=` | IDE JSON snippets |
+| GET | `/api/ide-snippets?token=` | Loopback-only IDE JSON snippets |
 | GET | `/api/traffic-logs` | Tool-call metadata list (loopback-only; see spec 09) |
 | GET | `/api/traffic-logs/summary` | Grouped counts (loopback-only; see spec 09) |
 | DELETE | `/api/traffic-logs` | Purge traffic files (loopback-only; see spec 09) |

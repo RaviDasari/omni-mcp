@@ -1,5 +1,6 @@
 import { readPidFile } from "../pid.js";
 import { startCommand, type StartOptions } from "./start.js";
+import { assertRunningConfig } from "../lifecycle.js";
 
 interface RestartOptions extends Omit<StartOptions, "foreground"> {
   config: string;
@@ -11,6 +12,7 @@ export async function restartCommand(options: RestartOptions): Promise<void> {
   if (pid) {
     process.stdout.write(`[omni-mcp] Stopping existing instance (PID ${pid})...\n`);
     try {
+      await assertRunningConfig(options.config, pid);
       process.kill(pid, "SIGTERM");
       await new Promise((resolve) => setTimeout(resolve, 2000));
       process.stdout.write("[omni-mcp] Stopped.\n");
@@ -19,7 +21,9 @@ export async function restartCommand(options: RestartOptions): Promise<void> {
         process.stdout.write("[omni-mcp] Previous process already exited (stale PID).\n");
       } else {
         const message = err instanceof Error ? err.message : "Unknown error";
-        process.stderr.write(`[omni-mcp] Warning: could not stop existing instance: ${message}\n`);
+        process.stderr.write(`[omni-mcp] Cannot restart: ${message}\n`);
+        process.exitCode = 1;
+        return;
       }
     }
   } else {

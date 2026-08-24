@@ -1,7 +1,10 @@
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ServerConfig } from "../../config/index.js";
+import { readJsonConfig, validateAndWriteConfig } from "../config-edit.js";
+import { matchingGateway } from "../http-client.js";
 
-interface AddOptions {
+export interface AddOptions {
   type: string;
   command?: string;
   args?: string[];
@@ -9,6 +12,8 @@ interface AddOptions {
   url?: string;
   profile?: string[];
   config: string;
+  gatewayUrl?: string;
+  json?: boolean;
 }
 
 export async function addCommand(
@@ -20,7 +25,7 @@ export async function addCommand(
   // Load existing config or create new
   let config: Record<string, unknown>;
   if (existsSync(configPath)) {
-    config = JSON.parse(readFileSync(configPath, "utf-8")) as Record<string, unknown>;
+    config = readJsonConfig(configPath);
   } else {
     config = {
       port: 6317,
@@ -71,7 +76,33 @@ export async function addCommand(
     };
   }
 
-  servers[serverName] = serverEntry;
+  const live = await matchingGateway(configPath, options.gatewayUrl);
+  if (live) {
+    const result = await live.client.request(`/api/servers/${encodeURIComponent(serverName)}`, {
+      method: "PUT",
+      body: JSON.stringify(serverEntry),
+    });
+    if (options.profile?.length) {
+      const current = await live.client.request<{ config: {
+        profiles: Record<string, { allow: string[] }>;
+      } }>("/api/config");
+      for (const profileName of options.profile) {
+        const profile = current.config.profiles[profileName] ?? { allow: [] };
+        if (!profile.allow.includes("*") && !profile.allow.includes(serverName)) {
+          profile.allow.push(serverName);
+        }
+        await live.client.request(`/api/profiles/${encodeURIComponent(profileName)}`, {
+          method: "PUT",
+          body: JSON.stringify(profile),
+        });
+      }
+    }
+    if (options.json) process.stdout.write(`${JSON.stringify({ mode: "live", result })}\n`);
+    else process.stdout.write(`[omni-mcp] Added server "${serverName}" (${serverEntry.type}) through the running gateway.\n`);
+    return;
+  }
+
+  servers[serverName] = serverEntry as ServerConfig;
   config.servers = servers;
 
   // Add to profile allow lists
@@ -89,8 +120,12 @@ export async function addCommand(
     config.profiles = profiles;
   }
 
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
+  validateAndWriteConfig(configPath, config);
 
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify({ mode: "offline", server: serverName, configPath })}\n`);
+    return;
+  }
   process.stdout.write(
     `[omni-mcp] Added server "${serverName}" (${serverEntry.type}) to ${configPath}\n`,
   );

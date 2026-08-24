@@ -1,5 +1,5 @@
 import { readPidFile } from "../pid.js";
-import { existsSync } from "node:fs";
+import { assertRunningConfig } from "../lifecycle.js";
 
 interface StopOptions {
   config: string;
@@ -14,6 +14,7 @@ export async function stopCommand(options: StopOptions): Promise<void> {
   }
 
   try {
+    await assertRunningConfig(options.config, pid);
     process.stdout.write(`[omni-mcp] Stopping process PID ${pid}...\n`);
     process.kill(pid, "SIGTERM");
 

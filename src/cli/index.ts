@@ -14,13 +14,15 @@ import { initCommand } from "./commands/init.js";
 import { DEFAULT_CONFIG_PATH } from "./config-path.js";
 import { runManagedCli } from "./managed-cli.js";
 import { registerSecretsCommand } from "./commands/secrets.js";
+import { registerManagementCommands } from "./commands/management.js";
+import { VERSION } from "../version.js";
 
 const program = new Command();
 
 program
   .name("omni-mcp")
   .description("One proxy. All your MCP servers. Every IDE.")
-  .version("0.1.0");
+  .version(VERSION);
 
 program
   .command("start")
@@ -56,6 +58,8 @@ program
   .command("reload")
   .description("Hot-reload configuration")
   .option("--config <path>", "Path to config file", DEFAULT_CONFIG_PATH)
+  .option("--gateway-url <url>", "Override gateway URL")
+  .option("--json", "Output machine-readable JSON")
   .action(reloadCommand);
 
 program
@@ -78,13 +82,18 @@ program
   .option("--url <url>", "Remote MCP server URL (http)")
   .option("--profile <name...>", "Add to profile allow list")
   .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
-  .action(addCommand);
+  .option("--gateway-url <url>", "Override gateway URL")
+  .option("--json", "Output machine-readable JSON")
+  .action((name, options) => runCompat(() => addCommand(name, options)));
 
 program
   .command("remove <server-name>")
   .description("Remove a server from config")
   .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
-  .action(removeCommand);
+  .option("--gateway-url <url>", "Override gateway URL")
+  .option("--json", "Output machine-readable JSON")
+  .option("--yes", "Skip confirmation")
+  .action((name, options) => runCompat(() => removeCommand(name, options)));
 
 program
   .command("ide-snippets")
@@ -103,6 +112,7 @@ program
   .action(initCommand);
 
 registerSecretsCommand(program);
+registerManagementCommands(program);
 
 program
   .command("cli")
@@ -112,4 +122,13 @@ if (process.argv[2] === "cli") {
   process.exitCode = await runManagedCli(process.argv.slice(3));
 } else {
   await program.parseAsync();
+}
+
+async function runCompat(action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch (error) {
+    process.stderr.write(`[omni-mcp] ERROR: ${error instanceof Error ? error.message : "Command failed"}\n`);
+    process.exitCode = 1;
+  }
 }

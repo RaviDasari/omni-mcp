@@ -27,11 +27,14 @@ The entry point is the `omni-mcp` binary defined in `package.json#bin`.
 
 ## Global Flags
 
-These flags are accepted by all commands:
+Management commands follow the grouped parity contract in
+[12-cli-parity-release.md](./12-cli-parity-release.md). Where applicable they accept:
 
 | Flag | Description |
 |------|-------------|
-| `--config <path>` | Path to config file. Default: `./omni-mcp.config.json` |
+| `--config <path>` | Path to config file. Default: `~/.config/omni-mcp/config.json` |
+| `--json` | Stable machine-readable output; stdout contains JSON only |
+| `--yes` | Confirm a destructive or replacement action non-interactively |
 | `--log-level <level>` | Log verbosity: `error`, `warn`, `info` (default), `debug` |
 | `--version` | Print version and exit |
 | `--help` | Print help and exit |
@@ -39,6 +42,9 @@ These flags are accepted by all commands:
 ---
 
 ## Commands
+
+The canonical management groups are `server`, `profile`, `token`, `config`, `logs`, and `tools`.
+Existing top-level commands remain compatibility aliases as specified in spec 12.
 
 ### `omni-mcp cli`
 
@@ -107,7 +113,7 @@ omni-mcp init [options]
 |------|---------|-------------|
 | `--import` | — | Auto-detect and import MCP servers from existing IDE configs (Cursor, VS Code, Claude Desktop) |
 | `--yes` / `-y` | — | Accept all defaults non-interactively (useful for scripts / CI) |
-| `--output <path>` | `./omni-mcp.config.json` | Output path for generated config |
+| `--output <path>` | `~/.config/omni-mcp/config.json` | Output path for generated config |
 | `--template <name>` | — | Start from a named template: `minimal`, `multi-agent`, `team` |
 
 #### Interactive Flow
@@ -143,7 +149,7 @@ $ npx omni-mcp-manager init
     claude  → safe (restricted for Claude Desktop)
   Accept? (Y/n) Y
 
-✅ Config written to ./omni-mcp.config.json
+✅ Config written to ~/.config/omni-mcp/config.json
 
 🚀 Next steps:
    1. Start the proxy:  omni-mcp start
@@ -190,7 +196,7 @@ omni-mcp add <server-name> [options]
 | `--args <args...>` | — | Arguments for the command (stdio only) |
 | `--url <url>` | — | Remote MCP server URL (http only) |
 | `--profile <name>` | — | Add server to this profile's allow list. Can be repeated. |
-| `--config <path>` | `./omni-mcp.config.json` | Config file path |
+| `--config <path>` | `~/.config/omni-mcp/config.json` | Config file path |
 
 #### Examples
 
@@ -314,7 +320,8 @@ curl -X POST http://127.0.0.1:6317/mcp \
 
 ### `omni-mcp start`
 
-Starts the proxy gateway daemon in the foreground.
+Starts the proxy gateway as a background daemon by default. `--foreground` keeps it attached to the
+current terminal.
 
 ```
 omni-mcp start [options]
@@ -325,7 +332,8 @@ omni-mcp start [options]
 | `--profile <name>` | Config `defaultProfile` or `"default"` | Active profile for all connections that do not present a token |
 | `--port <number>` | `6317` | Override the listen port |
 | `--host <address>` | `127.0.0.1` | Override the bind address |
-| `--config <path>` | `./omni-mcp.config.json` | Config file path |
+| `--config <path>` | `~/.config/omni-mcp/config.json` | Config file path |
+| `--foreground` | off | Run attached instead of daemonizing |
 
 #### Startup Output
 
@@ -434,9 +442,9 @@ If no running instance is found: exit code `1`, message `[omni-mcp] No running i
 
 ---
 
-### `omni-mcp reload`
+### `omni-mcp config reload` / `omni-mcp reload`
 
-Hot-reloads the configuration without restarting the daemon or its upstream server processes.
+Validates and hot-reloads the selected configuration without restarting the gateway process.
 
 ```
 omni-mcp reload [--config <path>]
@@ -446,10 +454,12 @@ What is reloaded:
 - `tokens` block (add/remove/update tokens and profile bindings)
 - `profiles` block (add/remove/update profile server lists)
 - `defaultProfile`
+- `servers` block: removed/disabled adapters disconnect; added/enabled adapters connect; changed
+  adapters are disconnected and recreated
+- CLI enablement, traffic-log settings, and re-resolved secret references
 
-What is NOT reloaded (requires full restart):
-- `servers` block (adding/removing/modifying servers)
-- `port` / `host`
+What requires full restart:
+- listener `port` / `host`
 
 ```
 [omni-mcp] Reloading configuration...
@@ -458,7 +468,9 @@ What is NOT reloaded (requires full restart):
 [omni-mcp] Reload complete.
 ```
 
-> **Tip**: Also triggered by `kill -HUP <pid>` on macOS/Linux.
+The command only targets a running gateway whose reported normalized absolute `configPath` matches
+the normalized absolute selected `--config`; otherwise it fails clearly rather than reloading a different instance.
+`kill -HUP <pid>` also reloads from the path used to start that process on macOS/Linux.
 
 ---
 

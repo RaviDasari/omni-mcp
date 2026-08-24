@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+import { JsonEditor } from "@/components/ui/json-editor";
 import { cn } from "@/lib/utils";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -414,13 +414,12 @@ function ToolPanel({
           </div>
 
           <TabsContent value="arguments" className="min-w-0">
-            <Textarea
+            <JsonEditor
               aria-label="Tool arguments as JSON"
               value={argumentsJson}
-              onChange={(event) => onArgumentsChange(event.target.value)}
-              rows={12}
-              spellCheck={false}
-              className="resize-y font-mono text-xs"
+              onValueChange={onArgumentsChange}
+              minRows={12}
+              containerClassName="max-h-[45vh]"
             />
             <p className="mt-2 text-xs text-muted-foreground">
               JSON object sent as the tool arguments. Optional fields are pre-filled as{" "}

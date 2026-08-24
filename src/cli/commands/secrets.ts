@@ -11,7 +11,7 @@ import {
   type OmniMcpConfig,
 } from "../../config/index.js";
 import { DEFAULT_CONFIG_PATH, DEFAULT_SECRETS_PATH } from "../config-path.js";
-import { readPidFile } from "../pid.js";
+import { matchingGateway } from "../http-client.js";
 
 interface CommonOptions {
   config: string;
@@ -45,19 +45,35 @@ export function registerSecretsCommand(program: Command): void {
     .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
     .option("--stdin", "Read the value from stdin")
     .action(safeAction(async (name: string, options: CommonOptions & { stdin?: boolean }) => {
-      const { rawConfig } = requireConfig(options.config);
       const value = options.stdin || !process.stdin.isTTY
         ? readFileSync(0, "utf8").replace(/\r?\n$/, "")
         : await hiddenPrompt(`Value for ${name}: `);
+      const live = await matchingGateway(options.config);
+      if (live) {
+        await live.client.request(`/api/secrets/${encodeURIComponent(name)}`, {
+          method: "PUT", body: JSON.stringify({ value }),
+        });
+        process.stdout.write(`[omni-mcp] Secret "${name}" saved through the running gateway.\n`);
+        return;
+      }
+      const { rawConfig } = requireConfig(options.config);
       createSecretStore(rawConfig.secretStore).set(name, value);
-      notifyRunningGateway();
       process.stdout.write(`[omni-mcp] Secret "${name}" saved (${rawConfig.secretStore.backend}).\n`);
+      offlineNotice(options.config);
     }));
 
   secrets
     .command("delete <name>")
     .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
-    .action(safeAction((name: string, options: CommonOptions) => {
+    .option("--yes", "Skip confirmation")
+    .action(safeAction(async (name: string, options: CommonOptions & { yes?: boolean }) => {
+      await confirmDelete(name, options.yes);
+      const live = await matchingGateway(options.config);
+      if (live) {
+        await live.client.request(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
+        process.stdout.write(`[omni-mcp] Secret "${name}" deleted.\n`);
+        return;
+      }
       const { rawConfig } = requireConfig(options.config);
       const usages = collectSecretUsages(rawConfig)[name] ?? [];
       if (usages.length > 0) {
@@ -66,19 +82,54 @@ export function registerSecretsCommand(program: Command): void {
       if (!createSecretStore(rawConfig.secretStore).delete(name)) {
         throw new Error(`Secret "${name}" was not found`);
       }
-      notifyRunningGateway();
       process.stdout.write(`[omni-mcp] Secret "${name}" deleted.\n`);
+      offlineNotice(options.config);
     }));
 
   secrets
     .command("sync")
     .description("Validate and refresh variables from the active backend")
     .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
-    .action(safeAction((options: CommonOptions) => {
+    .option("--json", "Output machine-readable JSON")
+    .action(safeAction(async (options: CommonOptions) => {
+      const live = await matchingGateway(options.config);
+      if (live) {
+        const payload = await live.client.request<Record<string, unknown>>("/api/secrets/sync", { method: "POST" });
+        if (options.json) process.stdout.write(`${JSON.stringify(payload)}\n`);
+        else process.stdout.write(`[omni-mcp] Synced ${String(payload.count ?? 0)} secret(s) from ${String(payload.backend)}.\n`);
+        return;
+      }
       const { rawConfig } = requireConfig(options.config);
       const count = createSecretStore(rawConfig.secretStore).list().length;
-      notifyRunningGateway();
-      process.stdout.write(`[omni-mcp] Synced ${count} secret(s) from ${rawConfig.secretStore.backend}.\n`);
+      if (options.json) process.stdout.write(`${JSON.stringify({ backend: rawConfig.secretStore.backend, count })}\n`);
+      else {
+        process.stdout.write(`[omni-mcp] Validated ${count} secret(s) from ${rawConfig.secretStore.backend} offline.\n`);
+        offlineNotice(options.config);
+      }
+    }));
+
+  secrets
+    .command("backend <backend>")
+    .description("Preview a secret backend migration")
+    .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
+    .option("--json", "Output machine-readable JSON")
+    .action(safeAction(async (backend: string, options: CommonOptions) => {
+      if (backend !== "file" && backend !== "keychain") throw new Error('Backend must be "file" or "keychain"');
+      const live = await matchingGateway(options.config);
+      let payload: Record<string, unknown>;
+      if (live) {
+        payload = await live.client.request(`/api/secrets/backend?backend=${backend}`);
+      } else {
+        const { rawConfig } = requireConfig(options.config);
+        payload = {
+          from: rawConfig.secretStore.backend,
+          to: backend,
+          count: createSecretStore(rawConfig.secretStore).list().length,
+          keychainSupported: process.platform === "darwin",
+        };
+      }
+      if (options.json) process.stdout.write(`${JSON.stringify(payload)}\n`);
+      else process.stdout.write(`Backend migration: ${String(payload.from)} -> ${String(payload.to)} (${String(payload.count)} secret(s))\n`);
     }));
 
   secrets
@@ -87,15 +138,24 @@ export function registerSecretsCommand(program: Command): void {
     .requiredOption("--account <account>", "Source Keychain account")
     .option("--name <name>", "Destination variable name")
     .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
-    .action(safeAction((positionalName: string | undefined, options: CommonOptions & { service: string; account: string; name?: string }) => {
+    .action(safeAction(async (positionalName: string | undefined, options: CommonOptions & { service: string; account: string; name?: string }) => {
       const name = options.name ?? positionalName;
       if (!name) throw new Error("Destination variable name is required");
+      const live = await matchingGateway(options.config);
+      if (live) {
+        await live.client.request("/api/secrets/import-keychain", {
+          method: "POST",
+          body: JSON.stringify({ name, service: options.service, account: options.account }),
+        });
+        process.stdout.write(`[omni-mcp] Imported Keychain item as "${name}".\n`);
+        return;
+      }
       const { rawConfig } = requireConfig(options.config);
       const value = new KeychainSecretStore(options.service).readAccount(options.account);
       if (!value) throw new Error(`Keychain item ${options.service}/${options.account} was not found`);
       createSecretStore(rawConfig.secretStore).set(name, value);
-      notifyRunningGateway();
       process.stdout.write(`[omni-mcp] Imported Keychain item as "${name}".\n`);
+      offlineNotice(options.config);
     }));
 
   secrets
@@ -108,7 +168,39 @@ export function registerSecretsCommand(program: Command): void {
     .option("--rename <mapping...>", "Rename collisions as NAME=NEW_NAME")
     .option("--config <path>", "Config file path", DEFAULT_CONFIG_PATH)
     .option("--json", "Output machine-readable JSON")
-    .action(safeAction((options: CommonOptions & { backend?: string; inline?: boolean; apply?: boolean; rename?: string[] }) => {
+    .action(safeAction(async (options: CommonOptions & { backend?: string; inline?: boolean; apply?: boolean; rename?: string[] }) => {
+      const live = await matchingGateway(options.config);
+      const renames = parseRenames(options.rename ?? []);
+      if (live && options.backend) {
+        if (options.backend !== "file" && options.backend !== "keychain") {
+          throw new Error('Backend must be "file" or "keychain"');
+        }
+        const payload = await live.client.request<Record<string, unknown>>("/api/secrets/backend", {
+          method: "POST", body: JSON.stringify({ backend: options.backend }),
+        });
+        if (options.json) process.stdout.write(`${JSON.stringify(payload)}\n`);
+        else process.stdout.write(`[omni-mcp] Migrated ${String(payload.migrated ?? 0)} secret(s) to ${options.backend}.\n`);
+        return;
+      }
+      if (live && options.inline) {
+        const payload = options.apply
+          ? await live.client.request<Record<string, unknown>>("/api/secrets/migrate-inline", {
+              method: "POST", body: JSON.stringify({ renames }),
+            })
+          : await live.client.request<Record<string, unknown>>("/api/secrets/migrate-inline");
+        if (options.json) process.stdout.write(`${JSON.stringify(payload)}\n`);
+        else if (options.apply) process.stdout.write(`[omni-mcp] Migrated ${String(payload.migrated ?? 0)} inline secret(s).\n`);
+        else {
+          const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+          for (const candidate of candidates as Array<{ server: string; field: string; envKey?: string; name: string }>) {
+            const path = candidate.field === "env"
+              ? `servers.${candidate.server}.env.${candidate.envKey}`
+              : `servers.${candidate.server}.auth.token`;
+            process.stdout.write(`${path} -> $${candidate.name}\n`);
+          }
+        }
+        return;
+      }
       const { rawConfig } = requireConfig(options.config);
       if (options.backend) {
         if (options.backend !== "file" && options.backend !== "keychain") {
@@ -132,12 +224,11 @@ export function registerSecretsCommand(program: Command): void {
           migrateSecretStore(destinationStore, sourceStore);
           throw error;
         }
-        notifyRunningGateway();
         process.stdout.write(`[omni-mcp] Migrated ${count} secret(s) to ${options.backend}.\n`);
+        offlineNotice(options.config);
         return;
       }
       if (!options.inline) throw new Error("Choose --backend <backend> or --inline");
-      const renames = parseRenames(options.rename ?? []);
       const candidates = cliInlineCandidates(rawConfig).map((candidate) => ({
         ...candidate,
         name: renames[candidate.name] ?? candidate.name,
@@ -169,9 +260,28 @@ export function registerSecretsCommand(program: Command): void {
         }
         throw error;
       }
-      notifyRunningGateway();
       process.stdout.write(`[omni-mcp] Migrated ${candidates.length} inline secret(s).\n`);
+      offlineNotice(options.config);
     }));
+}
+
+function offlineNotice(configPath: string): void {
+  process.stdout.write(
+    `[omni-mcp] Updated ${configPath} offline. Any running gateway was not refreshed; run \`omni-mcp reload --config ${configPath}\`.\n`,
+  );
+}
+
+async function confirmDelete(name: string, yes?: boolean): Promise<void> {
+  if (yes) return;
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error("Confirmation required; rerun with --yes");
+  }
+  process.stderr.write(`Delete secret "${name}"? [y/N] `);
+  const answer = await new Promise<string>((resolveAnswer) => {
+    process.stdin.setEncoding("utf8");
+    process.stdin.once("data", (chunk) => resolveAnswer(String(chunk).trim()));
+  });
+  if (!/^y(?:es)?$/i.test(answer)) throw new Error("Cancelled");
 }
 
 function safeAction<T extends unknown[]>(
@@ -189,17 +299,17 @@ function safeAction<T extends unknown[]>(
   };
 }
 
-function notifyRunningGateway(): void {
-  const pid = readPidFile();
-  if (!pid) return;
-  try {
-    process.kill(pid, "SIGHUP");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+async function listSecrets(options: CommonOptions): Promise<void> {
+  const live = await matchingGateway(options.config);
+  if (live) {
+    const payload = await live.client.request<Record<string, unknown>>("/api/secrets");
+    if (options.json) process.stdout.write(`${JSON.stringify(payload)}\n`);
+    else printSecretsPayload(payload as {
+      backend: string;
+      secrets: Array<{ name: string; set: boolean; usages: unknown[] }>;
+    });
+    return;
   }
-}
-
-function listSecrets(options: CommonOptions): void {
   const { rawConfig } = requireConfig(options.config);
   const store = createSecretStore(rawConfig.secretStore);
   const usages = collectSecretUsages(rawConfig);
@@ -221,6 +331,13 @@ function listSecrets(options: CommonOptions): void {
     process.stdout.write(`${JSON.stringify(payload)}\n`);
     return;
   }
+  printSecretsPayload(payload);
+}
+
+function printSecretsPayload(payload: {
+  backend: string;
+  secrets: Array<{ name: string; set: boolean; usages: unknown[] }>;
+}): void {
   process.stdout.write(`Backend: ${payload.backend}\n`);
   if (payload.secrets.length === 0) {
     process.stdout.write("No secrets configured.\n");

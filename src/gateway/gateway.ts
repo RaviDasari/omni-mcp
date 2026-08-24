@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { extname, join, normalize, relative, sep } from "node:path";
+import { extname, join, normalize, relative, resolve, sep } from "node:path";
 import type {
   OmniMcpConfig,
   ProfileConfig,
@@ -36,6 +36,7 @@ import {
 } from "./traffic-log.js";
 
 const TOOL_SEPARATOR = "__";
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -83,7 +84,7 @@ export class Gateway {
     this.config = options.config;
     this.rawConfig = options.rawConfig ?? structuredClone(options.config);
     this.adapters = options.adapters;
-    this.configPath = options.configPath;
+    this.configPath = options.configPath ? resolve(options.configPath) : undefined;
     this.uiDir = options.uiDir;
     this.version = options.version ?? VERSION;
     this.trafficLog = new TrafficLog(options.config.trafficLog, options.trafficLogDir);
@@ -153,7 +154,7 @@ export class Gateway {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
     if (url.pathname === "/_health" && req.method === "GET") {
-      return this.handleHealth(res);
+      return this.handlePublicHealth(res);
     }
     if (url.pathname === "/_ready" && req.method === "GET") {
       return this.handleReady(res);
@@ -210,6 +211,14 @@ export class Gateway {
     json(res, 200, this.healthPayload());
   }
 
+  private handlePublicHealth(res: ServerResponse): void {
+    json(res, 200, {
+      status: "ok",
+      version: this.version,
+      uptime: this.getUptime(),
+    });
+  }
+
   private handleReady(res: ServerResponse): void {
     const hasConnected = Array.from(this.adapters.values()).some((a) => a.status === "connected");
 
@@ -222,24 +231,9 @@ export class Gateway {
 
   private async handleApi(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const method = req.method ?? "GET";
-    const mutating = method !== "GET" && method !== "HEAD";
-    const trafficLogRequest = url.pathname === "/api/traffic-logs" ||
-      url.pathname === "/api/traffic-logs/summary";
-    const directToolsRequest = /^\/api\/servers\/[^/]+\/tools(?:\/call)?$/.test(url.pathname);
-    const cliRequest = url.pathname === "/api/cli/servers" ||
-      /^\/api\/cli\/servers\/[^/]+\/tools(?:\/call)?$/.test(url.pathname);
-    const secretsRequest = url.pathname === "/api/secrets" ||
-      url.pathname.startsWith("/api/secrets/");
 
-    if ((trafficLogRequest || directToolsRequest || cliRequest || secretsRequest) && !isLoopback(req)) {
+    if (!isLoopback(req)) {
       json(res, 403, { error: "This endpoint is only available from localhost" });
-      return;
-    }
-
-    if (mutating && !isLoopback(req)) {
-      json(res, 403, {
-        error: "Management writes are only allowed from localhost. Binding 0.0.0.0 without auth is unsafe.",
-      });
       return;
     }
 
@@ -771,7 +765,9 @@ export class Gateway {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       const status =
-        message.startsWith("Validation failed") ||
+        err instanceof RequestBodyTooLargeError
+          ? 413
+          : message.startsWith("Validation failed") ||
         message.startsWith("Invalid secret name") ||
         message.includes("only available on macOS")
           ? 400
@@ -926,7 +922,16 @@ export class Gateway {
     }
 
     // Parse request body
-    const body = await readBody(req);
+    let body: string;
+    try {
+      body = await readBody(req);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        json(res, 413, { error: error.message });
+        return;
+      }
+      throw error;
+    }
     let rpcRequest: {
       jsonrpc: string;
       id?: number | string;
@@ -1016,7 +1021,7 @@ export class Gateway {
           result: {
             protocolVersion: "2024-11-05",
             capabilities: { tools: { listChanged: false } },
-            serverInfo: { name: "omni-mcp", version: "0.1.0" },
+            serverInfo: { name: "omni-mcp", version: this.version },
           },
         };
 
@@ -1344,10 +1349,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isLoopback(req: IncomingMessage): boolean {
   const addr = req.socket.remoteAddress ?? "";
   return (
-    addr === "127.0.0.1" ||
+    addr.startsWith("127.") ||
     addr === "::1" ||
-    addr === ":ffff:127.0.0.1" ||
-    addr === "::ffff:127.0.0.1"
+    addr.startsWith("::ffff:127.")
   );
 }
 
@@ -1371,8 +1375,54 @@ function safeJoin(root: string, requestPath: string): string | undefined {
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString()));
-    req.on("error", reject);
+    let size = 0;
+    let settled = false;
+
+    const contentLength = Number(req.headers["content-length"]);
+    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+      req.resume();
+      reject(new RequestBodyTooLargeError());
+      return;
+    }
+
+    const cleanup = () => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+    };
+    const onData = (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_REQUEST_BODY_BYTES) {
+        settled = true;
+        cleanup();
+        req.resume();
+        reject(new RequestBodyTooLargeError());
+        return;
+      }
+      chunks.push(chunk);
+    };
+    const onEnd = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(Buffer.concat(chunks, size).toString());
+    };
+    const onError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    req.on("data", onData);
+    req.on("end", onEnd);
+    req.on("error", onError);
   });
+}
+
+class RequestBodyTooLargeError extends Error {
+  constructor() {
+    super(`Request body exceeds the ${MAX_REQUEST_BODY_BYTES}-byte limit`);
+    this.name = "RequestBodyTooLargeError";
+  }
 }

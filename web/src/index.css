@@ -46,6 +46,14 @@
   --sidebar-accent-foreground: oklch(0.29 0.013 256);
   --sidebar-border: oklch(0.9 0.003 256);
   --sidebar-ring: oklch(0.49 0.18 258);
+
+  --json-key: oklch(0.45 0.16 258);
+  --json-string: oklch(0.47 0.14 150);
+  --json-number: oklch(0.53 0.17 50);
+  --json-boolean: oklch(0.5 0.18 300);
+  --json-null: oklch(0.5 0.013 256);
+  --json-punctuation: oklch(0.55 0.013 256);
+  --json-gutter: oklch(0.996 0.001 256);
 }
 
 html[data-theme="dark"] {
@@ -89,6 +97,14 @@ html[data-theme="dark"] {
   --sidebar-accent-foreground: oklch(0.78 0.013 256);
   --sidebar-border: oklch(0.25 0.01 256);
   --sidebar-ring: oklch(0.64 0.15 258);
+
+  --json-key: oklch(0.74 0.12 258);
+  --json-string: oklch(0.76 0.13 150);
+  --json-number: oklch(0.78 0.13 60);
+  --json-boolean: oklch(0.75 0.14 300);
+  --json-null: oklch(0.6 0.013 256);
+  --json-punctuation: oklch(0.62 0.013 256);
+  --json-gutter: oklch(0.165 0.01 256);
 }
 
 @theme inline {
@@ -135,5 +151,27 @@ html[data-theme="dark"] {
   }
   body {
     @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* Token colours for the highlighted overlay rendered by <JsonEditor>. */
+@layer components {
+  .json-token-key {
+    color: var(--json-key);
+  }
+  .json-token-string {
+    color: var(--json-string);
+  }
+  .json-token-number {
+    color: var(--json-number);
+  }
+  .json-token-boolean {
+    color: var(--json-boolean);
+  }
+  .json-token-null {
+    color: var(--json-null);
+  }
+  .json-token-punctuation {
+    color: var(--json-punctuation);
   }
 }

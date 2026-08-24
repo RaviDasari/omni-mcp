@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { Gateway } from "../../src/gateway/gateway.js";
 import type { ServerAdapter, ServerStatus, Tool, ToolResult } from "../../src/transport/types.js";
 import type { OmniMcpConfig } from "../../src/config/schema.js";
@@ -94,6 +94,36 @@ function makeConfig(): OmniMcpConfig {
   };
 }
 
+async function invokeApiFromAddress(
+  gateway: Gateway,
+  address: string,
+  path: string,
+): Promise<{ status: number; body: string }> {
+  let status = 0;
+  let body = "";
+  const req = {
+    method: "GET",
+    socket: { remoteAddress: address },
+  };
+  const res = {
+    writeHead(code: number) {
+      status = code;
+    },
+    end(value?: string) {
+      body = value ?? "";
+    },
+  };
+  const api = gateway as unknown as {
+    handleApi(
+      request: typeof req,
+      response: typeof res,
+      url: URL,
+    ): Promise<void>;
+  };
+  await api.handleApi(req, res, new URL(`http://127.0.0.1${path}`));
+  return { status, body };
+}
+
 describe("Management API", () => {
   let gateway: Gateway;
   const baseUrl = "http://127.0.0.1:6401";
@@ -108,7 +138,7 @@ describe("Management API", () => {
     gateway = new Gateway({
       config: current,
       adapters,
-      configPath,
+      configPath: relative(process.cwd(), configPath),
       trafficLogDir: join(dir, "traffic"),
       secretStoreOptions: { filePath: join(dir, "secrets.json") },
       version: "0.1.0",
@@ -210,6 +240,18 @@ describe("Management API", () => {
       body: JSON.stringify({ config: { servers: {} } }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it("rejects API request bodies larger than 1 MiB", async () => {
+    const res = await fetch(`${baseUrl}/api/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "x".repeat(1024 * 1024 + 1),
+    });
+    expect(res.status).toBe(413);
+    await expect(res.json()).resolves.toEqual({
+      error: "Request body exceeds the 1048576-byte limit",
+    });
   });
 
   it("GET /api/ide-snippets returns cursor json", async () => {
@@ -447,6 +489,29 @@ describe("Management API", () => {
     };
     await api.handleApi(req, res, new URL(`${baseUrl}/api/secrets`));
     expect(status).toBe(403);
+  });
+
+  it.each([
+    "/api/health",
+    "/api/config",
+    "/api/ide-snippets",
+    "/api/servers/filesystem",
+    "/api/profiles/default",
+    "/api/tokens/default",
+  ])("rejects sensitive management GET %s from non-loopback clients", async (path) => {
+    const result = await invokeApiFromAddress(gateway, "192.0.2.10", path);
+    expect(result.status).toBe(403);
+    expect(JSON.parse(result.body)).toEqual({
+      error: "This endpoint is only available from localhost",
+    });
+  });
+
+  it("accepts valid IPv4-mapped loopback and rejects the malformed form", async () => {
+    const mapped = await invokeApiFromAddress(gateway, "::ffff:127.0.0.1", "/api/config");
+    expect(mapped.status).toBe(200);
+
+    const malformed = await invokeApiFromAddress(gateway, ":ffff:127.0.0.1", "/api/config");
+    expect(malformed.status).toBe(403);
   });
 
   it("records tool-call metadata and serves list and grouped APIs", async () => {

@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { JsonEditor } from "@/components/ui/json-editor";
 import {
   Select,
   SelectContent,
@@ -382,7 +383,13 @@ export default function ServersPage() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent
+          className={
+            editorMode === "json"
+              ? "max-h-[90vh] w-[95vw] max-w-4xl overflow-y-auto"
+              : "max-h-[90vh] w-[95vw] max-w-2xl overflow-y-auto"
+          }
+        >
           <DialogHeader>
             <DialogTitle>{editing ? `Edit ${editing}` : "Add server"}</DialogTitle>
           </DialogHeader>
@@ -423,13 +430,12 @@ export default function ServersPage() {
             {editorMode === "json" ? (
               <div className="grid gap-1">
                 <Label htmlFor="server-json">Server configuration</Label>
-                <Textarea
+                <JsonEditor
                   id="server-json"
                   value={jsonValue}
-                  rows={16}
-                  spellCheck={false}
-                  className="font-mono text-xs"
-                  onChange={(e) => setJsonValue(e.target.value)}
+                  onValueChange={setJsonValue}
+                  minRows={18}
+                  containerClassName="max-h-[55vh]"
                 />
                 <p className="text-xs text-muted-foreground">
                   Enter one server object. The server name is set separately above.

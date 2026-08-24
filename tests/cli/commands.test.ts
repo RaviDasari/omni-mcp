@@ -23,10 +23,15 @@ describe("CLI Commands", () => {
             command: "echo",
             args: ["hello"],
           },
+          memory: {
+            type: "stdio",
+            command: "echo",
+            args: ["memory"],
+          },
         },
         profiles: {
           default: { allow: ["*"] },
-          safe: { allow: ["filesystem"] },
+          safe: { allow: ["filesystem", "memory"] },
         },
         tokens: {
           default: { profile: "default" },
@@ -115,7 +120,7 @@ describe("CLI Commands", () => {
       const originalExit = process.exit;
       process.exit = (() => {}) as any;
 
-      await removeCommand("filesystem", { config: CONFIG_PATH });
+      await removeCommand("filesystem", { config: CONFIG_PATH, yes: true });
 
       process.exit = originalExit;
 

@@ -10,8 +10,14 @@ All runtime behavior is driven by a single JSON configuration file: `omni-mcp.co
 
 | Source | Behavior |
 |--------|----------|
-| `./omni-mcp.config.json` in CWD | Default, loaded automatically |
-| `--config <path>` CLI flag | Overrides the default path |
+| `~/.config/omni-mcp/config.json` | Default for CLI commands and `init` output |
+| `--config <path>` CLI flag | Selects another config for commands that consume config |
+| `init --output <path>` | Selects the generated config destination |
+
+Relative paths supplied by the user are resolved against the current working directory. Runtime
+health reports the normalized absolute `configPath`; hybrid CLI management uses the live API only
+when that path exactly matches the normalized absolute selected path. The secrets file is a separate fixed path,
+`~/.config/omni-mcp/secrets.json`, and does not move with `--config`.
 
 ---
 
@@ -33,6 +39,9 @@ All runtime behavior is driven by a single JSON configuration file: `omni-mcp.co
 
   // Required. At least a "default" token must be defined.
   "tokens": { /* see Tokens section — see spec 02-token-auth.md */ },
+
+  // Optional compatibility policy. Default: "fallback-to-default".
+  "security": { "unknownTokenPolicy": "fallback-to-default" },
 
   // Optional. Default: file backend at ~/.config/omni-mcp/secrets.json (path is not configurable).
   // See spec 11-managed-secrets.md

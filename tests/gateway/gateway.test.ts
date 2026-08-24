@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Gateway } from "../../src/gateway/gateway.js";
 import type { ServerAdapter, ServerStatus, Tool, ToolResult } from "../../src/transport/types.js";
 import type { OmniMcpConfig } from "../../src/config/schema.js";
+import { VERSION } from "../../src/version.js";
 
 // Helper to construct auth header without it being censored
 function authHeader(token: string): string {
@@ -96,15 +97,17 @@ describe("Gateway", () => {
   });
 
   describe("Health endpoints", () => {
-    it("GET /_health returns server status", async () => {
+    it("GET /_health returns a public-safe status", async () => {
       const res = await fetch(`${baseUrl}/_health`);
       expect(res.status).toBe(200);
 
       const body = await res.json() as any;
       expect(body.status).toBe("ok");
+      expect(body.version).toBe(VERSION);
       expect(body.uptime).toBeGreaterThanOrEqual(0);
-      expect(body.servers.filesystem.status).toBe("connected");
-      expect(body.servers.github.status).toBe("connected");
+      expect(body.servers).toBeUndefined();
+      expect(body.configPath).toBeUndefined();
+      expect(body.defaultProfile).toBeUndefined();
     });
 
     it("GET /_ready returns 200 when at least one server connected", async () => {
@@ -132,7 +135,21 @@ describe("Gateway", () => {
       expect(res.status).toBe(200);
       const body = await res.json() as any;
       expect(body.result.serverInfo.name).toBe("omni-mcp");
+      expect(body.result.serverInfo.version).toBe(VERSION);
       expect(body.result.protocolVersion).toBe("2024-11-05");
+    });
+
+    it("rejects request bodies larger than 1 MiB", async () => {
+      const res = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": authHeader("default") },
+        body: "x".repeat(1024 * 1024 + 1),
+      });
+
+      expect(res.status).toBe(413);
+      await expect(res.json()).resolves.toEqual({
+        error: "Request body exceeds the 1048576-byte limit",
+      });
     });
 
     it("tools/list returns namespaced tools based on profile", async () => {

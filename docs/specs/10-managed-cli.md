@@ -88,6 +88,12 @@ arguments and results are not written to the usage file. Each invocation appends
 traffic record with `source: "cli"` so it appears on `/logs` and can be filtered separately from
 MCP traffic.
 
+`omni-mcp cli` maps to these managed endpoints and therefore requires `cli.enabled: true`.
+`omni-mcp tools` maps to the direct Playground endpoints
+(`/api/servers/:name/tools[/call]`), can inspect or call any globally enabled connected server, and
+does not imply managed CLI opt-in. Both surfaces are loopback-only and reuse existing gateway
+adapters; neither launches a second upstream process.
+
 ## Scope
 
 The gateway already supplies persistent sessions and managed connection configuration, replacing

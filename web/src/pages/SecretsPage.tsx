@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { SecretInput } from "@/components/ui/secret-input";
 import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
@@ -73,10 +74,29 @@ export default function SecretsPage() {
     }
   };
 
-  const openSecret = (secretName = "") => {
-    setName(secretName);
+  // Every dialog field is cleared on both open and close so no value from a
+  // previous secret can leak into the next one.
+  const resetFields = () => {
+    setName("");
     setValue("");
+    setService("");
+    setAccount("");
+  };
+
+  const openSecret = (secretName = "") => {
+    resetFields();
+    setName(secretName);
     setMode("secret");
+  };
+
+  const openKeychain = () => {
+    resetFields();
+    setMode("keychain");
+  };
+
+  const closeDialog = () => {
+    resetFields();
+    setMode(null);
   };
 
   const save = async () => {
@@ -86,8 +106,7 @@ export default function SecretsPage() {
       return;
     }
     await perform(() => putSecret(variable, value));
-    setMode(null);
-    setValue("");
+    closeDialog();
   };
 
   const importItem = async () => {
@@ -96,7 +115,7 @@ export default function SecretsPage() {
       return;
     }
     await perform(() => importKeychainSecret(name.trim(), service.trim(), account.trim()));
-    setMode(null);
+    closeDialog();
   };
 
   const migrateInline = async () => {
@@ -179,7 +198,7 @@ export default function SecretsPage() {
                 Move to {data.backend === "file" ? "macOS Keychain" : "secrets.json"}
               </Button>
               {data.keychainSupported ? (
-                <Button variant="outline" onClick={() => setMode("keychain")}>Import Keychain item</Button>
+                <Button variant="outline" onClick={openKeychain}>Import Keychain item</Button>
               ) : null}
               <Button variant="outline" onClick={() => void migrateInline()}>Migrate inline config</Button>
             </CardContent>
@@ -221,7 +240,7 @@ export default function SecretsPage() {
         </>
       )}
 
-      <Dialog open={mode !== null} onOpenChange={(open) => { if (!open) setMode(null); }}>
+      <Dialog open={mode !== null} onOpenChange={(open) => { if (!open) closeDialog(); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{mode === "keychain" ? "Import from macOS Keychain" : name ? `Replace ${name}` : "Add variable"}</DialogTitle>
@@ -245,12 +264,21 @@ export default function SecretsPage() {
             ) : (
               <div className="grid gap-1">
                 <Label htmlFor="secret-value">New value</Label>
-                <Input id="secret-value" type="password" autoComplete="new-password" value={value} onChange={(event) => setValue(event.target.value)} />
+                <SecretInput
+                  id="secret-value"
+                  name="omni-mcp-secret-value"
+                  revealLabel="value"
+                  value={value}
+                  onValueChange={setValue}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Paste the new value. Stored values are never read back, so this always starts empty.
+                </p>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMode(null)}>Cancel</Button>
+            <Button variant="outline" onClick={closeDialog}>Cancel</Button>
             <Button disabled={busy} onClick={() => void (mode === "keychain" ? importItem() : save())}>
               {mode === "keychain" ? "Import" : "Save"}
             </Button>
