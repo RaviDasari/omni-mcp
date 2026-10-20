@@ -25,21 +25,28 @@ export default function ProfilesPage() {
   const [editing, setEditing] = useState<string | null>(null);
   const [wildcard, setWildcard] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [denyTools, setDenyTools] = useState<Record<string, string[]>>({});
 
   const openCreate = () => {
     setEditing(null);
     setName("");
     setWildcard(false);
     setSelected([]);
+    setDenyTools({});
     setFormError(null);
     setOpen(true);
   };
 
-  const openEdit = (profileName: string, allow: string[]) => {
+  const openEdit = (
+    profileName: string,
+    allow: string[],
+    denied: Record<string, string[]> = {},
+  ) => {
     setEditing(profileName);
     setName(profileName);
     setWildcard(allow.includes("*"));
     setSelected(allow.filter((s) => s !== "*"));
+    setDenyTools(structuredClone(denied));
     setFormError(null);
     setOpen(true);
   };
@@ -56,7 +63,7 @@ export default function ProfilesPage() {
       return;
     }
     try {
-      const result = await putProfile(profileName, { allow });
+      const result = await putProfile(profileName, { allow, denyTools });
       setConfig(result.config);
       setOpen(false);
     } catch (err) {
@@ -89,7 +96,7 @@ export default function ProfilesPage() {
           </div>
           <div>
             <h2 className="text-3xl font-bold text-foreground">Profiles</h2>
-            <p className="text-muted-foreground">Allow-lists that tokens bind to. Keep a default profile.</p>
+            <p className="text-muted-foreground">Server access and tool policies assigned to Tokens.</p>
           </div>
         </div>
         <Button onClick={openCreate}>
@@ -133,8 +140,17 @@ export default function ProfilesPage() {
                       {s}
                     </Badge>
                   ))}
+                  {Object.entries(profile.denyTools ?? {}).map(([server, tools]) => (
+                    <Badge key={`${server}-denied`} variant="outline">
+                      {server}: {tools.length} tools off
+                    </Badge>
+                  ))}
                 </div>
-                <Button variant="outline" size="sm" onClick={() => openEdit(profileName, profile.allow)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEdit(profileName, profile.allow, profile.denyTools)}
+                >
                   Edit
                 </Button>
               </CardContent>

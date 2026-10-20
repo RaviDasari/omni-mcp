@@ -10,7 +10,7 @@ import {
 import { dirname } from "node:path";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { DEFAULT_SECRETS_PATH } from "../cli/config-path.js";
-import type { SecretStoreConfig } from "./schema.js";
+import type { SecretBackendConfig } from "./schema.js";
 
 export const SECRET_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const KEYCHAIN_INDEX_ACCOUNT = "__omni_mcp_index__";
@@ -32,13 +32,13 @@ export interface SecretStoreOptions {
 export function assertSecretName(name: string): void {
   if (!SECRET_NAME_PATTERN.test(name)) {
     throw new Error(
-      `Invalid secret name "${name}". Use letters, numbers, and underscores, starting with a letter or underscore.`,
+      `Invalid variable name "${name}". Use letters, numbers, and underscores, starting with a letter or underscore.`,
     );
   }
 }
 
 export function createSecretStore(
-  config: SecretStoreConfig,
+  config: SecretBackendConfig,
   options: SecretStoreOptions = {},
 ): SecretStore {
   if (config.backend === "keychain") {

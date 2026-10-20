@@ -128,10 +128,9 @@ Create `~/.config/omni-mcp/config.json` (the CLI default), or select another fil
 }
 ```
 
-Exact `$NAME` or `${NAME}` strings are filled from the process environment first, then from the
-active secret store — `~/.config/omni-mcp/secrets.json` by default, or the macOS Keychain backend.
-Values are write-only and never returned by the API. See
-[Managed secrets](./docs/specs/11-managed-secrets.md).
+Exact `$NAME` or `${NAME}` strings are filled from the process environment first, then managed
+Variables. Plain values live in `variables.json`; secret values use `secrets.json` or macOS
+Keychain and remain write-only. See [Managed Variables](./docs/specs/11-managed-variables.md).
 
 ### Add Servers Without Editing JSON
 
@@ -210,7 +209,7 @@ Give your CI bot its own token with access only to deployment tools:
 | `omni-mcp ide-snippets` | Print IDE-specific setup snippets |
 | `omni-mcp cli <server> <tool>` | Discover and invoke tools from CLI-enabled MCP servers |
 | `omni-mcp cli install-skill` | Teach Cursor and Claude to use the managed CLI |
-| `omni-mcp secrets …` | Write-only secret store (`list`, `set`, `delete`, `sync`, `import-keychain`, `migrate`) |
+| `omni-mcp variables …` | Manage secret/plain Variables (`list`, `show`, `set`, `convert`, `delete`, `sync`, `import-keychain`, `migrate`) |
 
 ### Install the agent skill
 
@@ -244,8 +243,9 @@ Full specs are available in [`docs/specs/`](./docs/specs/):
 - [Web UI](./docs/specs/08-web-ui.md)
 - [Traffic logs](./docs/specs/09-traffic-logs.md)
 - [Managed MCP CLI](./docs/specs/10-managed-cli.md)
-- [Managed secrets](./docs/specs/11-managed-secrets.md)
+- [Managed Variables](./docs/specs/11-managed-variables.md)
 - [CLI parity and release contract](./docs/specs/12-cli-parity-release.md)
+- [Tool policies and Tokens](./docs/specs/13-tool-policies-and-tokens.md)
 
 ## Contributing
 

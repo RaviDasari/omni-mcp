@@ -23,7 +23,7 @@ const TEMPLATES: Record<string, Record<string, unknown>> = {
       default: { allow: ["*"] },
     },
     tokens: {
-      default: { profile: "default" },
+      default: { profiles: ["default"] },
     },
   },
   "multi-agent": {
@@ -52,9 +52,9 @@ const TEMPLATES: Record<string, Record<string, unknown>> = {
       safe: { allow: ["filesystem", "memory"] },
     },
     tokens: {
-      default: { profile: "safe", description: "Unknown agents — restricted" },
-      cursor: { profile: "admin", description: "Cursor IDE — full access" },
-      claude: { profile: "safe", description: "Claude Desktop — safe tools" },
+      default: { profiles: ["safe"], description: "Unknown agents — restricted" },
+      cursor: { profiles: ["admin"], description: "Cursor IDE — full access" },
+      claude: { profiles: ["safe"], description: "Claude Desktop — safe tools" },
     },
   },
   team: {
@@ -83,10 +83,10 @@ const TEMPLATES: Record<string, Record<string, unknown>> = {
       admin: { allow: ["*"] },
     },
     tokens: {
-      default: { profile: "default", description: "Fallback" },
-      cursor: { profile: "admin", description: "Cursor — full access" },
-      claude: { profile: "developer", description: "Claude — dev tools" },
-      "ci-bot": { profile: "developer", description: "CI agent" },
+      default: { profiles: ["default"], description: "Fallback" },
+      cursor: { profiles: ["admin"], description: "Cursor — full access" },
+      claude: { profiles: ["developer"], description: "Claude — dev tools" },
+      "ci-bot": { profiles: ["developer"], description: "CI agent" },
     },
     security: {
       unknownTokenPolicy: "reject",
@@ -175,7 +175,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
   if (options.import && imported.length > 0) {
     template.servers = Object.fromEntries(imported.map((item) => [item.name, item.config]));
     template.profiles = { default: { allow: ["*"] } };
-    template.tokens = { default: { profile: "default" } };
+    template.tokens = { default: { profiles: ["default"] } };
   }
 
   mkdirSync(dirname(outputPath), { recursive: true });

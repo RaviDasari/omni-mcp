@@ -22,6 +22,9 @@ export async function ideSnippetsCommand(options: IdeSnippetsOptions): Promise<v
   for (const snippet of result.snippets) {
     lines.push(`━━━ ${snippet.title} ━━━`);
     lines.push(`Add to ${snippet.pathHint}:`);
+    for (const alt of snippet.altPaths ?? []) {
+      lines.push(`  or ${alt}`);
+    }
     lines.push("");
     lines.push(snippet.json);
     lines.push("");

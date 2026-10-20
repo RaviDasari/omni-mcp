@@ -56,7 +56,7 @@ describe("init import parity", () => {
     expect(generated.servers.shared.command).toBe("cursor-shared");
     expect(generated.servers["shared-2"].command).toBe("workspace-shared");
     expect(generated.profiles).toEqual({ default: { allow: ["*"] } });
-    expect(generated.tokens).toEqual({ default: { profile: "default" } });
+    expect(generated.tokens).toEqual({ default: { profiles: ["default"] } });
     expect(stdout).toContain("Imported: 3 server(s) from Cursor, VS Code workspace");
   });
 });
@@ -77,7 +77,7 @@ describe("secrets offline parity", () => {
       },
       profiles: { default: { allow: ["*"] } },
       tokens: { default: { profile: "default" } },
-      secretStore: { backend: "file", keychainService: "omni-mcp" },
+      secretBackend: { backend: "file", keychainService: "omni-mcp" },
     }));
     vi.doMock("node:os", async (importOriginal) => {
       const actual = await importOriginal<typeof import("node:os")>();
@@ -97,12 +97,12 @@ describe("secrets offline parity", () => {
       stderr += String(chunk);
       return true;
     });
-    const { registerSecretsCommand } = await import("../../src/cli/commands/secrets.js");
+    const { registerVariablesCommand } = await import("../../src/cli/commands/variables.js");
 
     const preview = new Command().name("omni-mcp").exitOverride();
-    registerSecretsCommand(preview);
+    registerVariablesCommand(preview);
     await preview.parseAsync([
-      "node", "omni-mcp", "secrets", "migrate", "--inline", "--json", "--config", configPath,
+      "node", "omni-mcp", "variables", "migrate", "--inline", "--json", "--config", configPath,
     ]);
     const payload = JSON.parse(stdout);
     expect(payload.candidates).toEqual([
@@ -114,9 +114,9 @@ describe("secrets offline parity", () => {
 
     stdout = "";
     const sync = new Command().name("omni-mcp").exitOverride();
-    registerSecretsCommand(sync);
-    await sync.parseAsync(["node", "omni-mcp", "secrets", "sync", "--config", configPath]);
-    expect(stdout).toContain("Validated 0 secret(s)");
+    registerVariablesCommand(sync);
+    await sync.parseAsync(["node", "omni-mcp", "variables", "sync", "--config", configPath]);
+    expect(stdout).toContain("Synced 0 secret and 0 plain Variable(s)");
     expect(stdout).toContain("offline");
     expect(stdout).toContain("omni-mcp reload --config");
     expect(stdout).not.toContain("super-secret-value");

@@ -1,77 +1,9 @@
 import * as React from "react";
 
+import { findJsonError, tokenizeJson } from "@/lib/json-highlight";
 import { cn } from "@/lib/utils";
 
-type TokenClass =
-  | "json-token-key"
-  | "json-token-string"
-  | "json-token-number"
-  | "json-token-boolean"
-  | "json-token-null"
-  | "json-token-punctuation"
-  | null;
-
-interface Token {
-  text: string;
-  className: TokenClass;
-}
-
-const JSON_PATTERN =
-  /"(?:\\.|[^"\\])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\btrue\b|\bfalse\b|\bnull\b|[{}[\],:]/g;
-
 const INDENT = "  ";
-
-function classify(text: string, source: string, endIndex: number): TokenClass {
-  if (text.startsWith('"')) {
-    let index = endIndex;
-    while (index < source.length && /\s/.test(source[index])) index += 1;
-    return source[index] === ":" ? "json-token-key" : "json-token-string";
-  }
-  if (text === "true" || text === "false") return "json-token-boolean";
-  if (text === "null") return "json-token-null";
-  if (/^[{}[\],:]$/.test(text)) return "json-token-punctuation";
-  return "json-token-number";
-}
-
-// Splits source into styled spans while preserving every character, so the
-// overlay stays glyph-for-glyph aligned with the textarea on top of it.
-function tokenize(source: string): Token[] {
-  const tokens: Token[] = [];
-  let last = 0;
-  let match: RegExpExecArray | null;
-
-  JSON_PATTERN.lastIndex = 0;
-  while ((match = JSON_PATTERN.exec(source)) !== null) {
-    if (match.index > last) {
-      tokens.push({ text: source.slice(last, match.index), className: null });
-    }
-    const end = match.index + match[0].length;
-    tokens.push({ text: match[0], className: classify(match[0], source, end) });
-    last = end;
-  }
-  if (last < source.length) {
-    tokens.push({ text: source.slice(last), className: null });
-  }
-  return tokens;
-}
-
-function findError(value: string): { message: string; line: number } | null {
-  if (!value.trim()) return null;
-  try {
-    JSON.parse(value);
-    return null;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Invalid JSON";
-    const lineMatch = /line (\d+)/i.exec(message);
-    if (lineMatch) return { message, line: Number(lineMatch[1]) };
-    const positionMatch = /position (\d+)/i.exec(message);
-    if (positionMatch) {
-      const line = value.slice(0, Number(positionMatch[1])).split("\n").length;
-      return { message, line };
-    }
-    return { message, line: 1 };
-  }
-}
 
 // Applied identically to the textarea and the highlight overlay; any divergence
 // here shows up as drifting glyphs between the two layers.
@@ -108,8 +40,8 @@ export const JsonEditor = React.forwardRef<HTMLTextAreaElement, JsonEditorProps>
 
     React.useImperativeHandle(forwardedRef, () => textareaRef.current as HTMLTextAreaElement);
 
-    const tokens = React.useMemo(() => tokenize(value), [value]);
-    const error = React.useMemo(() => findError(value), [value]);
+    const tokens = React.useMemo(() => tokenizeJson(value), [value]);
+    const error = React.useMemo(() => findJsonError(value), [value]);
     const lineCount = React.useMemo(() => value.split("\n").length, [value]);
 
     const syncScroll = React.useCallback((event: React.UIEvent<HTMLTextAreaElement>) => {

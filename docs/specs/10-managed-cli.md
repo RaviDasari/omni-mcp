@@ -23,6 +23,9 @@ CLI access is an explicit, local capability:
 
 `cli.enabled` defaults to `false`. It is independent of token profiles, but the server must also be
 globally enabled and connected. CLI discovery and calls use loopback-only management endpoints.
+Profile tool denies do not apply to this direct interface. Global `disabledTools` do apply:
+disabled tools are omitted from discovery/counts and calls are rejected. See
+[13-tool-policies-and-omni-tokens.md](./13-tool-policies-and-omni-tokens.md).
 
 ## Commands
 

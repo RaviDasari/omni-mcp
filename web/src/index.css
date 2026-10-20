@@ -174,4 +174,21 @@ html[data-theme="dark"] {
   .json-token-punctuation {
     color: var(--json-punctuation);
   }
+
+  /* Terminal-style surface for <CodeBlock>: stays dark in both themes, so it
+     re-declares the token colours tuned for a dark background. */
+  .code-surface {
+    --code-background: oklch(0.17 0.012 256);
+    --code-foreground: oklch(0.86 0.01 256);
+    --json-key: oklch(0.78 0.12 258);
+    --json-string: oklch(0.79 0.13 150);
+    --json-number: oklch(0.82 0.13 60);
+    --json-boolean: oklch(0.79 0.14 300);
+    --json-null: oklch(0.65 0.013 256);
+    --json-punctuation: oklch(0.66 0.013 256);
+
+    background-color: var(--code-background);
+    color: var(--code-foreground);
+    border-color: oklch(0.28 0.012 256);
+  }
 }

@@ -72,7 +72,7 @@ describe("management CLI parity", () => {
     await run("server", "disable", "gamma", "--config", configPath);
     await run("server", "cli-enable", "gamma", "--config", configPath);
     await run("profile", "create", "gamma-only", "--allow", "gamma", "--config", configPath);
-    await run("token", "create", "robot", "--profile", "gamma-only", "--description", "automation", "--config", configPath);
+    await run("token", "create", "robot", "--profiles", "gamma-only", "limited", "--description", "automation", "--config", configPath);
     await run("token", "disable", "robot", "--config", configPath);
 
     const config = readConfig();
@@ -84,12 +84,37 @@ describe("management CLI parity", () => {
     });
     expect(config.profiles["gamma-only"]).toEqual({ allow: ["gamma"] });
     expect(config.tokens.robot).toMatchObject({
-      profile: "gamma-only",
+      profiles: ["gamma-only", "limited"],
       description: "automation",
       disabled: true,
     });
     expect(stdout.match(/running process was not changed/g)).toHaveLength(6);
     expect(stderr).toBe("");
+  });
+
+  it("manages global and profile tool policies offline", async () => {
+    await run("server", "disable-tool", "alpha", "write_file", "--config", configPath);
+    await run("profile", "disable-tool", "limited", "alpha", "delete_file", "--config", configPath);
+    await run("profile", "set", "limited", "--allow", "alpha", "beta", "--config", configPath);
+    await run("profile", "apply-tools", "limited", "--server", "alpha", "--to", "default", "--config", configPath);
+
+    let config = readConfig();
+    expect(config.servers.alpha.disabledTools).toEqual(["write_file"]);
+    expect(config.profiles.limited.denyTools.alpha).toEqual(["delete_file"]);
+    expect(config.profiles.default.denyTools.alpha).toEqual(["delete_file"]);
+
+    await run("server", "enable-tool", "alpha", "write_file", "--config", configPath);
+    await run("profile", "enable-tool", "limited", "alpha", "delete_file", "--config", configPath);
+    config = readConfig();
+    expect(config.servers.alpha.disabledTools).toEqual([]);
+    expect(config.profiles.limited.denyTools).toEqual({});
+  });
+
+  it("rejects deleting a profile assigned to a Token", async () => {
+    await run("profile", "delete", "limited", "--yes", "--config", configPath);
+    expect(process.exitCode).toBe(1);
+    expect(readConfig().profiles.limited).toBeDefined();
+    expect(stderr).toContain("assigned to Token");
   });
 
   it("requires --yes without a TTY and leaves destructive targets unchanged", async () => {

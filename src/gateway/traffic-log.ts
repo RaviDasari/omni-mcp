@@ -276,7 +276,11 @@ function matches(event: TrafficLogEvent, filters: TrafficLogFilters): boolean {
     time <= filters.to &&
     (filters.source === undefined || event.source === filters.source) &&
     (filters.token === undefined || event.token === filters.token) &&
-    (filters.profile === undefined || event.profile === filters.profile) &&
+    (
+      filters.profile === undefined ||
+      event.profile === filters.profile ||
+      event.profile.split("+").includes(filters.profile)
+    ) &&
     (filters.server === undefined || event.server === filters.server) &&
     (filters.tool === undefined || event.tool === filters.tool)
   );

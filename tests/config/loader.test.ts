@@ -133,7 +133,7 @@ describe("Config Loader", () => {
         },
         profiles: { default: { allow: ["*"] } },
         tokens: { default: { profile: "default" } },
-        secretStore: { backend: "file" },
+        secretBackend: { backend: "file" },
       };
 
       const result = resolveConfig(raw, { env: {}, filePath });
@@ -144,6 +144,36 @@ describe("Config Loader", () => {
       expect(resolvedServer.type === "http" && resolvedServer.auth?.token).toBe("stored-value");
       expect(rawServer.type === "http" && rawServer.auth?.token).toBe("${API_TOKEN}");
       expect(result.rawConfig!.port).toBe(6317);
+    });
+
+    it("resolves plain references from variables.json", () => {
+      const dir = mkdtempSync(join(tmpdir(), "omni-loader-variables-"));
+      tempDirs.push(dir);
+      const variablesFilePath = join(dir, "variables.json");
+      writeFileSync(variablesFilePath, JSON.stringify({
+        API_URL: { type: "plain", value: "https://example.test" },
+      }));
+      const raw = {
+        servers: {
+          local: {
+            type: "stdio",
+            command: "example",
+            env: { API_URL: "$API_URL" },
+          },
+        },
+        profiles: { default: { allow: ["*"] } },
+        tokens: { default: { profiles: ["default"] } },
+      };
+
+      const result = resolveConfig(raw, {
+        env: {},
+        filePath: join(dir, "secrets.json"),
+        variablesFilePath,
+      });
+
+      expect(result.errors).toEqual([]);
+      const server = result.config!.servers.local;
+      expect(server.type === "stdio" && server.env?.API_URL).toBe("https://example.test");
     });
   });
 });

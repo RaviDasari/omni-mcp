@@ -2,6 +2,7 @@ export interface StdioServerConfig {
   type: "stdio";
   enabled?: boolean;
   cli?: { enabled?: boolean };
+  disabledTools?: string[];
   command: string;
   args?: string[];
   env?: Record<string, string>;
@@ -16,6 +17,7 @@ export interface HttpServerConfig {
   type: "http";
   enabled?: boolean;
   cli?: { enabled?: boolean };
+  disabledTools?: string[];
   url: string;
   auth?: { type: "jwt"; token: string };
   timeoutMs?: number;
@@ -28,10 +30,12 @@ export type ServerConfig = StdioServerConfig | HttpServerConfig;
 
 export interface ProfileConfig {
   allow: string[];
+  denyTools?: Record<string, string[]>;
 }
 
 export interface TokenConfig {
-  profile: string;
+  profiles?: string[];
+  profile?: string;
   description?: string;
   disabled?: boolean;
 }
@@ -50,30 +54,34 @@ export interface OmniMcpConfig {
     retentionDays: number;
     maxBytes: number;
   };
-  secretStore: {
+  secretBackend: {
     backend: "file" | "keychain";
     keychainService: string;
   };
 }
 
-export interface SecretUsage {
+export interface VariableUsage {
   path: string;
   server?: string;
 }
 
-export interface SecretMetadata {
+export interface VariableMetadata {
   name: string;
+  type: "secret" | "plain";
   set: boolean;
-  usages: SecretUsage[];
+  value?: string;
+  usages: VariableUsage[];
 }
 
-export interface SecretsResponse {
-  backend: "file" | "keychain";
-  path?: string;
+export interface VariablesResponse {
+  secretBackend: "file" | "keychain";
+  secretPath?: string;
+  variablesPath: string;
   keychainService?: string;
   keychainSupported: boolean;
-  count?: number;
-  secrets: SecretMetadata[];
+  secretCount: number;
+  plainCount: number;
+  variables: VariableMetadata[];
 }
 
 export interface HealthPayload {
@@ -109,6 +117,8 @@ export interface McpTool {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  enabled?: boolean;
+  deniedByProfiles?: string[];
 }
 
 export interface McpToolResult {
@@ -135,6 +145,7 @@ export interface IdeSnippet {
   id: string;
   title: string;
   pathHint: string;
+  altPaths?: string[];
   json: string;
 }
 

@@ -39,7 +39,7 @@ const secondaryLinks: NavItem[] = [
   { to: "/logs", label: "Logs", icon: ListFilter },
   { to: "/playground", label: "Playground", icon: Wrench },
   { to: "/tokens", label: "Tokens", icon: KeyRound },
-  { to: "/secrets", label: "Secrets", icon: ShieldCheck },
+  { to: "/variables", label: "Variables", icon: ShieldCheck },
   { to: "/profiles", label: "Profiles", icon: Shield },
   { to: "/ide", label: "IDE", icon: Terminal },
 ];

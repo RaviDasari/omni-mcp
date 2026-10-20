@@ -76,9 +76,12 @@ export default function PlaygroundPage() {
     void fetchServerTools(server)
       .then((data) => {
         if (cancelled) return;
-        setToolsData(data);
+        const available = { ...data, tools: data.tools.filter((tool) => tool.enabled !== false) };
+        setToolsData(available);
         setSelectedToolName((current) =>
-          data.tools.some((tool) => tool.name === current) ? current : (data.tools[0]?.name ?? ""),
+          available.tools.some((tool) => tool.name === current)
+            ? current
+            : (available.tools[0]?.name ?? ""),
         );
       })
       .catch((error: unknown) => {

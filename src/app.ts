@@ -240,6 +240,6 @@ function getAdapterType(adapter: ServerAdapter): string {
 }
 
 function comparableServer(server: ServerConfig): Record<string, unknown> {
-  const { enabled, cli: _cli, ...rest } = server;
+  const { enabled, cli: _cli, disabledTools: _disabledTools, ...rest } = server;
   return { enabled: enabled !== false, ...rest };
 }

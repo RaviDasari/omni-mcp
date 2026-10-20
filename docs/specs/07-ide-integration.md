@@ -71,11 +71,11 @@ VS Code supports MCP via workspace or user-level settings.
 
 ---
 
-### Claude Desktop
+### Claude Code
 
-Claude Desktop supports MCP servers defined in its configuration file.
+Claude Code reads MCP servers from its own config and speaks HTTP directly.
 
-**Configuration** (platform-dependent path):
+**Configuration** (`~/.claude.json`):
 
 ```json
 {
@@ -90,6 +90,34 @@ Claude Desktop supports MCP servers defined in its configuration file.
 }
 ```
 
+**Token**: Use a named token `claude-code` to give the CLI its own profile.
+
+---
+
+### Claude Desktop
+
+Claude Desktop launches stdio commands from its configuration file, so the HTTP gateway is reached
+through the `mcp-remote` bridge.
+
+**Configuration**:
+
+| Platform | Path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
+
+```json
+{
+  "mcpServers": {
+    "omni-mcp": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://127.0.0.1:6317/mcp", "--header", "Authorization: ******"]
+    }
+  }
+}
+```
+
 **Token**: Use a named token `claude` to restrict Claude Desktop to safe-only tools.
 
 ---
@@ -98,7 +126,7 @@ Claude Desktop supports MCP servers defined in its configuration file.
 
 Windsurf supports MCP via its configuration format.
 
-**Configuration** (`~/.windsurf/mcp.json`):
+**Configuration** (`~/.codeium/windsurf/mcp_config.json`):
 
 ```json
 {
@@ -129,6 +157,10 @@ Header: Authorization: ******
 ## Per-Client Profiles — The Killer Feature
 
 The unique value of omni-mcp is giving each IDE/agent its own view of available tools:
+
+The product name for these routing credentials is **Omni Tokens**. An Omni Token may now assign
+multiple profiles; grants combine with maximum privilege, while global tool disables always win.
+See [13-tool-policies-and-omni-tokens.md](./13-tool-policies-and-omni-tokens.md).
 
 ```json
 {

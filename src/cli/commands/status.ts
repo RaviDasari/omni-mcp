@@ -39,10 +39,10 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
         let toolCount = 0;
         if (info.status === "connected") {
           try {
-            const value = await client.request<{ tools: unknown[] }>(
+            const value = await client.request<{ tools: Array<{ enabled?: boolean }> }>(
               `/api/servers/${encodeURIComponent(name)}/tools`,
             );
-            toolCount = value.tools.length;
+            toolCount = value.tools.filter((tool) => tool.enabled !== false).length;
           } catch {
             // Status remains useful when one adapter cannot list tools.
           }
@@ -71,7 +71,8 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
 
       process.stdout.write(`Tokens (${Object.keys(config.tokens).length}):\n`);
       for (const [name, token] of Object.entries(config.tokens)) {
-        process.stdout.write(`  ${name}  →  ${token.profile}${token.disabled ? " (disabled)" : ""}\n`);
+        const profiles = token.profiles ?? (token.profile ? [token.profile] : []);
+        process.stdout.write(`  ${name}  →  ${profiles.join(", ")}${token.disabled ? " (disabled)" : ""}\n`);
       }
       process.stdout.write("\n");
 

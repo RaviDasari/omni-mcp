@@ -2,7 +2,7 @@
 
 ## Overview
 
-All runtime behavior is driven by a single JSON configuration file: `omni-mcp.config.json`. The file defines the upstream MCP server fleet, named profiles, and token credentials. This document specifies the schema, validation rules, and variable-reference resolution. Secret **values** live in a separate store; see [11-managed-secrets.md](./11-managed-secrets.md).
+All runtime behavior is driven by a single JSON configuration file: `omni-mcp.config.json`. The file defines the upstream MCP server fleet, named profiles, and token credentials. This document specifies the schema, validation rules, and variable-reference resolution. Managed values are described in [11-managed-variables.md](./11-managed-variables.md).
 
 ---
 
@@ -16,8 +16,8 @@ All runtime behavior is driven by a single JSON configuration file: `omni-mcp.co
 
 Relative paths supplied by the user are resolved against the current working directory. Runtime
 health reports the normalized absolute `configPath`; hybrid CLI management uses the live API only
-when that path exactly matches the normalized absolute selected path. The secrets file is a separate fixed path,
-`~/.config/omni-mcp/secrets.json`, and does not move with `--config`.
+when that path exactly matches the normalized absolute selected path. `variables.json` and the file
+secret backend are separate fixed paths under `~/.config/omni-mcp/` and do not move with `--config`.
 
 ---
 
@@ -44,8 +44,8 @@ when that path exactly matches the normalized absolute selected path. The secret
   "security": { "unknownTokenPolicy": "fallback-to-default" },
 
   // Optional. Default: file backend at ~/.config/omni-mcp/secrets.json (path is not configurable).
-  // See spec 11-managed-secrets.md
-  "secretStore": { "backend": "file", "keychainService": "omni-mcp" }
+  // See spec 11-managed-variables.md
+  "secretBackend": { "backend": "file", "keychainService": "omni-mcp" }
 }
 ```
 
@@ -68,6 +68,9 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
 
       // Optional. Expose this server through `omni-mcp cli`. Default: false.
       "cli": { "enabled": false },
+
+      // Optional global kill-switch. Upstream tool names, not namespaced names.
+      "disabledTools": ["delete_file"],
 
       // Required. Executable name or path.
       "command": "npx",
@@ -115,7 +118,7 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
 
         // Required when type is "jwt".
         // Prefer an exact $NAME or ${NAME} reference. Literals are accepted so they can
-        // be migrated into the secret store (see spec 11-managed-secrets.md).
+        // be migrated into a secret Variable (see spec 11-managed-variables.md).
         "token": "$PROD_DB_JWT"
       },
 
@@ -143,7 +146,9 @@ Profiles define which servers a client can access. See [02-token-auth.md](./02-t
 
     "safe-coding": {
       // Only expose these servers to clients using this profile.
-      "allow": ["filesystem", "github"]
+      "allow": ["filesystem", "github"],
+      // Optional opt-out policy for MCP clients assigned this profile.
+      "denyTools": { "filesystem": ["write_file"] }
     },
 
     "admin": {
@@ -159,15 +164,18 @@ Profiles define which servers a client can access. See [02-token-auth.md](./02-t
 - `"allow": ["server-a", "server-b"]` exposes only the listed servers.
 - A server name that does not exist in the `servers` block is a validation error.
 - The profile named `"default"` is required and used when no other profile resolves.
+- `denyTools` server keys must exist; tool names are runtime values and may be stale.
+- Tokens may assign multiple profiles. Full policy rules are in
+  [13-tool-policies-and-tokens.md](./13-tool-policies-and-tokens.md).
 
 ---
 
 ## Environment Variable Resolution
 
 Any config string value that is **exactly** `$NAME` or `${NAME}` is a reference. Lookup is
-`process.env[NAME]` when non-empty, then the active secret store (`secretStore.backend`, default
-file `~/.config/omni-mcp/secrets.json`). Full store, syntax, CLI, API, and UI contracts:
-[11-managed-secrets.md](./11-managed-secrets.md).
+`process.env[NAME]` when non-empty, then the typed Variable catalog. Plain values come from
+`~/.config/omni-mcp/variables.json`; secret values come from `secretBackend`. Full contracts:
+[11-managed-variables.md](./11-managed-variables.md).
 
 ### Rules
 

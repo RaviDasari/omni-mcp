@@ -15,9 +15,10 @@ into stdout.
 
 | Group | Required operations |
 |---|---|
-| `server` | `list`, `show`, `add`, `update`, `remove`, `clone`, `enable`, `disable`, `cli-enable`, `cli-disable` |
-| `profile` | `list`, `show`, `create`, `update`, `delete` |
+| `server` | `list`, `show`, `add`, `update`, `remove`, `clone`, `enable`, `disable`, `cli-enable`, `cli-disable`, `enable-tool`, `disable-tool` |
+| `profile` | `list`, `show`, `create`, `update`, `delete`, `enable-tool`, `disable-tool`, `apply-tools` |
 | `token` | `list`, `show`, `create`, `update`, `delete`, `enable`, `disable` |
+| `variables` | `list`, `show`, `set`, `convert`, `delete`, `sync`, `import-keychain`, `migrate` |
 | `config` | `path`, `show`, `apply`, `validate`, `reload` |
 | `logs` | `list`, `summary`, `clear`, with the traffic-log filters and pagination from spec 09 |
 | `tools` | `list`, `show`, `call` against the direct Playground API |
@@ -36,7 +37,6 @@ The existing commands remain supported for the compatibility window:
 - `reload` → `config reload`
 - `ide-snippets`, `start`, `stop`, `restart`, and `status` retain their names
 - `cli` remains the managed, explicitly opted-in tool interface; it is not an alias for `tools`
-- `secrets` retains its group and gains parity behavior described below
 
 Aliases use the same validation, output, exit codes, target selection, and confirmation rules as
 their canonical commands.
@@ -60,7 +60,7 @@ ports, and custom config files cannot accidentally report the default instance.
 
 ## Mutation safety and confirmation
 
-- Destructive operations (`server remove`, `profile delete`, `token delete`, `logs clear`, secret
+- Destructive operations (`server remove`, `profile delete`, `token delete`, `logs clear`, Variable
   deletion, and replacement-style config apply) prompt on an interactive TTY.
 - `--yes` confirms non-interactively. Without a TTY and without `--yes`, abort without changing
   state.
@@ -76,12 +76,12 @@ ports, and custom config files cannot accidentally report the default instance.
 Reload validates and resolves the whole config before changing live state. It hot-applies server
 changes: removed/disabled adapters disconnect, added/enabled adapters connect, and adapters whose
 connection-affecting configuration changed are disconnected and recreated. Profiles, tokens,
-default profile, traffic-log settings, CLI enablement, and secrets are refreshed without restarting
+default profile, traffic-log settings, CLI enablement, and Variables are refreshed without restarting
 the gateway process. Listener `host` and `port` changes require restart.
 
 If validation or resolution fails, the prior in-memory config and usable adapters remain active.
 
-## Import and secrets parity
+## Import and Variables parity
 
 `init --import` is functional, not documentation-only. It discovers supported Cursor, VS Code, and
 Claude Desktop user/workspace config locations, silently skips missing files, imports stdio and
@@ -89,11 +89,9 @@ HTTP server definitions, resolves deterministic name collisions without dropping
 writes the normal default profile/token structure. Existing output still requires explicit
 overwrite confirmation (`--yes`).
 
-The `secrets` group preserves write-only values and no-value-in-argv behavior. In addition to
-list/status, set, delete, sync, external Keychain import, inline migration, and backend migration,
-the CLI exposes the same backend migration preview/apply distinction as the UI/API. Live secret
-sync/migration re-resolves and hot-applies adapters; offline operations target only the selected
-config/store and clearly report when reload is needed. JSON output contains metadata only.
+The `variables` group manages secret and plain values. Secret input remains absent from argv and
+output; plain values are readable. It supports conversion, Keychain import, inline migration, and
+secret-only backend migration. Live sync/migration re-resolves and hot-applies adapters.
 
 ## Direct Playground versus managed CLI
 
@@ -111,7 +109,7 @@ config/store and clearly report when reload is needed. JSON output contains meta
   bodies return HTTP `413` and the connection is safely drained or closed; malformed JSON remains
   `400`.
 - All management mutations are loopback-only. Sensitive management reads are also loopback-only,
-  including config, server/profile/token metadata, IDE snippets, traffic logs, secrets, direct
+  including config, server/profile/token metadata, IDE snippets, traffic logs, Variables, direct
   Playground tools, and managed CLI routes. Public health/readiness remain available for probes.
 - The default bind is `127.0.0.1`. Any non-loopback bind prints a prominent warning that MCP is
   network-accessible and that binding without authentication is unsafe; loopback management
@@ -126,7 +124,7 @@ config/store and clearly report when reload is needed. JSON output contains meta
 ## Technical constraints
 
 - Node.js `>=22.12`
-- Config default: `~/.config/omni-mcp/config.json`; secrets default:
-  `~/.config/omni-mcp/secrets.json`
+- Config default: `~/.config/omni-mcp/config.json`; Variables catalog:
+  `~/.config/omni-mcp/variables.json`; file secret backend: `~/.config/omni-mcp/secrets.json`
 - No secret value in CLI/API output, logs, traffic metadata, process arguments, or rewritten config
 - No source compatibility break for the aliases listed above in this release

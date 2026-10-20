@@ -16,7 +16,7 @@
 - No cloud or SaaS hosting.
 - No team-shared deployments (Phase 2).
 - No OAuth authentication (Phase 2).
-- No tool-level granularity within a server (server-level allow/deny only).
+- No per-request policy expressions beyond global and profile-based tool controls.
 - No multi-tenancy or enterprise compliance features (Phase 3).
 
 ---
@@ -80,7 +80,7 @@
 
 | File | Topic |
 |------|-------|
-| [01-configuration.md](./01-configuration.md) | Config file schema, `secretStore`, and `$NAME` resolution |
+| [01-configuration.md](./01-configuration.md) | Config file schema, `secretBackend`, and `$NAME` resolution |
 | [02-token-auth.md](./02-token-auth.md) | Token model, profile binding, precedence rules |
 | [03-proxy-gateway.md](./03-proxy-gateway.md) | HTTP gateway, routing, aggregated tool exposure |
 | [04-transport-bridging.md](./04-transport-bridging.md) | stdio and HTTP upstream transport adapters |
@@ -90,5 +90,6 @@
 | [08-web-ui.md](./08-web-ui.md) | Local management UI and `/api` routes |
 | [09-traffic-logs.md](./09-traffic-logs.md) | MCP tool-call traffic log, UI filters, retention |
 | [10-managed-cli.md](./10-managed-cli.md) | Managed CLI for opt-in upstream tools |
-| [11-managed-secrets.md](./11-managed-secrets.md) | Secret store, `$NAME` references, CLI/API/UI |
+| [11-managed-variables.md](./11-managed-variables.md) | Typed Variables, `$NAME` references, CLI/API/UI |
 | [12-cli-parity-release.md](./12-cli-parity-release.md) | CLI management parity, hybrid targeting, compatibility, and release hardening |
+| [13-tool-policies-and-tokens.md](./13-tool-policies-and-tokens.md) | Global/profile tool policies and multi-profile Tokens |

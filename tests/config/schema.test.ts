@@ -113,6 +113,30 @@ describe("Config Schema", () => {
         }
       }
     });
+
+    it("accepts tool policies and multi-profile Omni Tokens", () => {
+      const result = configSchema.safeParse({
+        servers: {
+          test: {
+            type: "stdio",
+            command: "test",
+            disabledTools: ["delete", "delete"],
+          },
+        },
+        profiles: {
+          default: { allow: ["*"], denyTools: { test: ["write", "write"] } },
+          admin: { allow: ["*"] },
+        },
+        tokens: { default: { profiles: ["default", "admin"] } },
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.servers.test?.disabledTools).toEqual(["delete"]);
+        expect(result.data.profiles.default?.denyTools?.test).toEqual(["write"]);
+        expect(result.data.tokens.default?.profiles).toEqual(["default", "admin"]);
+      }
+    });
   });
 
   describe("invalid configs", () => {
@@ -205,6 +229,24 @@ describe("Config Schema", () => {
         security: { unknownTokenPolicy: "invalid" },
       });
 
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects empty tool names and empty profile assignments", () => {
+      const result = configSchema.safeParse({
+        servers: { test: { type: "stdio", command: "x", disabledTools: [""] } },
+        profiles: { default: { allow: ["*"] } },
+        tokens: { default: { profiles: [] } },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects ambiguous legacy and canonical profile fields", () => {
+      const result = configSchema.safeParse({
+        servers: { test: { type: "stdio", command: "x" } },
+        profiles: { default: { allow: ["*"] }, admin: { allow: ["*"] } },
+        tokens: { default: { profile: "default", profiles: ["admin"] } },
+      });
       expect(result.success).toBe(false);
     });
   });

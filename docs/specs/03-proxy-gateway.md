@@ -52,7 +52,9 @@ Oversized requests return HTTP `413`; malformed JSON within the limit returns `4
 
 ### Single MCP Endpoint for All Servers
 
-omni-mcp presents itself to the client as **one MCP server**. The client issues a single `tools/list` request and receives a unified list of all tools from all servers allowed by the active profile.
+omni-mcp presents itself to the client as **one MCP server**. The client issues a single
+`tools/list` request and receives a unified list after the Omni Token's profile grants are unioned,
+profile-denied tools are removed, and global server tool disables are removed.
 
 ```
 Client: tools/list
@@ -92,9 +94,13 @@ Client → tools/call { name: "filesystem__read_file", arguments: {...} }
 
 The gateway:
 1. Splits the tool name on the first `__` to extract `server = "filesystem"` and `tool = "read_file"`.
-2. Verifies `filesystem` is in the active profile's allow list. If not → MCP error `UNAUTHORIZED`.
-3. Forwards `tools/call { name: "read_file", arguments: {...} }` to the `filesystem` upstream adapter.
-4. Returns the upstream response to the client.
+2. Verifies at least one assigned profile grants the server and tool.
+3. Verifies the tool is not globally disabled.
+4. Forwards `tools/call { name: "read_file", arguments: {...} }` to the `filesystem` upstream adapter.
+5. Returns the upstream response to the client.
+
+Unavailable tools are reported as `-32601` so callers cannot distinguish denied tools from unknown
+tools. See [13-tool-policies-and-omni-tokens.md](./13-tool-policies-and-omni-tokens.md).
 
 ### Routing Failures
 

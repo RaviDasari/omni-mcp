@@ -55,7 +55,10 @@ export async function removeCommand(
   config.servers = servers;
 
   // Remove from all profile allow lists
-  const profiles = (config.profiles ?? {}) as Record<string, { allow: string[] }>;
+  const profiles = (config.profiles ?? {}) as Record<
+    string,
+    { allow: string[]; denyTools?: Record<string, string[]> }
+  >;
   for (const [profileName, profile] of Object.entries(profiles)) {
     const idx = profile.allow.indexOf(serverName);
     if (idx !== -1) {
@@ -64,6 +67,7 @@ export async function removeCommand(
         `[omni-mcp] Removed "${serverName}" from profile "${profileName}" allow list.\n`,
       );
     }
+    if (profile.denyTools) delete profile.denyTools[serverName];
   }
   config.profiles = profiles;
 

@@ -90,7 +90,7 @@ function makeConfig(): OmniMcpConfig {
     },
     security: { unknownTokenPolicy: "fallback-to-default" },
     trafficLog: { enabled: true, retentionDays: 7, maxBytes: 5242880 },
-    secretStore: { backend: "file", keychainService: "omni-mcp" },
+    secretBackend: { backend: "file", keychainService: "omni-mcp" },
   };
 }
 
@@ -141,6 +141,7 @@ describe("Management API", () => {
       configPath: relative(process.cwd(), configPath),
       trafficLogDir: join(dir, "traffic"),
       secretStoreOptions: { filePath: join(dir, "secrets.json") },
+      variableStoreOptions: { variablesFilePath: join(dir, "variables.json") },
       version: "0.1.0",
       onSaveConfig: async (next) => {
         writeConfig(configPath, next);
@@ -184,37 +185,45 @@ describe("Management API", () => {
     expect(referenced.type === "stdio" && referenced.env?.TOKEN).toBe("$LOCKED_SECRET");
   });
 
-  it("manages write-only secret metadata without returning values", async () => {
-    const saved = await fetch(`${baseUrl}/api/secrets/API_SECRET`, {
+  it("manages typed Variables without returning saved secret values", async () => {
+    const saved = await fetch(`${baseUrl}/api/variables/API_SECRET`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: "super-secret-value" }),
+      body: JSON.stringify({ type: "secret", value: "super-secret-value" }),
     });
     expect(saved.status).toBe(200);
     const savedText = await saved.text();
     expect(savedText).not.toContain("super-secret-value");
 
-    const listed = await fetch(`${baseUrl}/api/secrets`);
+    const listed = await fetch(`${baseUrl}/api/variables`);
     expect(listed.status).toBe(200);
     const listedText = await listed.text();
     expect(listedText).not.toContain("super-secret-value");
-    expect(JSON.parse(listedText).secrets).toContainEqual(
-      expect.objectContaining({ name: "API_SECRET", set: true }),
+    expect(JSON.parse(listedText).variables).toContainEqual(
+      expect.objectContaining({ name: "API_SECRET", type: "secret", set: true }),
     );
 
-    const deleted = await fetch(`${baseUrl}/api/secrets/API_SECRET`, { method: "DELETE" });
+    const converted = await fetch(`${baseUrl}/api/variables/API_SECRET/type`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "plain" }),
+    });
+    expect(converted.status).toBe(200);
+    expect(await converted.text()).toContain("super-secret-value");
+
+    const deleted = await fetch(`${baseUrl}/api/variables/API_SECRET`, { method: "DELETE" });
     expect(deleted.status).toBe(200);
   });
 
-  it("rejects deletion of a referenced secret with usage metadata", async () => {
-    const saved = await fetch(`${baseUrl}/api/secrets/LOCKED_SECRET`, {
+  it("rejects deletion of a referenced Variable with usage metadata", async () => {
+    const saved = await fetch(`${baseUrl}/api/variables/LOCKED_SECRET`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: "locked-value" }),
+      body: JSON.stringify({ type: "secret", value: "locked-value" }),
     });
     expect(saved.status).toBe(200);
 
-    const deleted = await fetch(`${baseUrl}/api/secrets/LOCKED_SECRET`, { method: "DELETE" });
+    const deleted = await fetch(`${baseUrl}/api/variables/LOCKED_SECRET`, { method: "DELETE" });
     expect(deleted.status).toBe(409);
     const body = (await deleted.json()) as { usages: Array<{ path: string }> };
     expect(body.usages).toContainEqual(
@@ -261,6 +270,22 @@ describe("Management API", () => {
     expect(body.snippets.some((s) => s.id === "cursor")).toBe(true);
   });
 
+  it("GET /api/ide-snippets separates Claude Code from Claude Desktop", async () => {
+    const res = await fetch(`${baseUrl}/api/ide-snippets`);
+    const body = (await res.json()) as {
+      snippets: Array<{ id: string; pathHint: string; altPaths?: string[] }>;
+    };
+
+    const claudeCode = body.snippets.find((s) => s.id === "claude-code");
+    expect(claudeCode?.pathHint).toBe("~/.claude.json");
+
+    const claudeDesktop = body.snippets.find((s) => s.id === "claude-desktop");
+    expect(claudeDesktop?.pathHint).toBe(
+      "~/Library/Application Support/Claude/claude_desktop_config.json",
+    );
+    expect(claudeDesktop?.altPaths).toHaveLength(2);
+  });
+
   it("lists raw tools for a connected server", async () => {
     const res = await fetch(`${baseUrl}/api/servers/filesystem/tools`);
     expect(res.status).toBe(200);
@@ -302,6 +327,90 @@ describe("Management API", () => {
       name: "search_orgs",
       args: { query: "acme" },
     });
+  });
+
+  it("toggles global and profile tool policies", async () => {
+    const adapterBeforePolicyChange = adapters.get("filesystem");
+    const disableGlobal = await fetch(
+      `${baseUrl}/api/servers/filesystem/tools/search_orgs/enabled`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      },
+    );
+    expect(disableGlobal.status).toBe(200);
+    expect(adapters.get("filesystem")).toBe(adapterBeforePolicyChange);
+
+    const { disabledTools: _disabledTools, ...serverWithoutPolicy } = current.servers.filesystem!;
+    const fullServerUpdate = await fetch(`${baseUrl}/api/servers/filesystem`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(serverWithoutPolicy),
+    });
+    const fullServerBody = await fullServerUpdate.json() as { config: OmniMcpConfig };
+    expect(fullServerBody.config.servers.filesystem?.disabledTools).toEqual(["search_orgs"]);
+
+    const blocked = await fetch(`${baseUrl}/api/servers/filesystem/tools/call`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tool: "search_orgs", arguments: {} }),
+    });
+    expect(blocked.status).toBe(403);
+
+    const denyProfile = await fetch(
+      `${baseUrl}/api/profiles/default/servers/filesystem/tools/search_orgs/enabled`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      },
+    );
+    expect(denyProfile.status).toBe(200);
+    const denyBody = await denyProfile.json() as { config: OmniMcpConfig };
+    expect(denyBody.config.profiles.default?.denyTools?.filesystem).toEqual(["search_orgs"]);
+
+    const fullProfileUpdate = await fetch(`${baseUrl}/api/profiles/default`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allow: ["filesystem"] }),
+    });
+    const fullProfileBody = await fullProfileUpdate.json() as { config: OmniMcpConfig };
+    expect(fullProfileBody.config.profiles.default?.denyTools?.filesystem).toEqual(["search_orgs"]);
+
+    await fetch(`${baseUrl}/api/servers/filesystem/tools/search_orgs/enabled`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+    await fetch(`${baseUrl}/api/profiles/default/servers/filesystem/tools/search_orgs/enabled`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: true }),
+    });
+  });
+
+  it("rejects deleting a profile assigned to a Token", async () => {
+    await fetch(`${baseUrl}/api/profiles/temporary`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allow: ["filesystem"] }),
+    });
+    await fetch(`${baseUrl}/api/tokens/temporary`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profiles: ["temporary"] }),
+    });
+
+    const blocked = await fetch(`${baseUrl}/api/profiles/temporary`, { method: "DELETE" });
+    expect(blocked.status).toBe(409);
+    await expect(blocked.json()).resolves.toMatchObject({
+      error: expect.stringContaining("assigned to Token"),
+    });
+
+    await fetch(`${baseUrl}/api/tokens/temporary`, { method: "DELETE" });
+    const removed = await fetch(`${baseUrl}/api/profiles/temporary`, { method: "DELETE" });
+    expect(removed.status).toBe(200);
   });
 
   it("preserves upstream MCP error results", async () => {

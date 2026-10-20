@@ -43,8 +43,13 @@ Management commands follow the grouped parity contract in
 
 ## Commands
 
-The canonical management groups are `server`, `profile`, `token`, `config`, `logs`, and `tools`.
+The canonical management groups are `server`, `profile`, `omni-token`, `config`, `logs`, and
+`tools`. `token` remains a compatibility alias for `omni-token`.
 Existing top-level commands remain compatibility aliases as specified in spec 12.
+
+Global and profile tool controls use `server enable-tool|disable-tool` and
+`profile enable-tool|disable-tool|apply-tools`; the full contract is in
+[13-tool-policies-and-omni-tokens.md](./13-tool-policies-and-omni-tokens.md).
 
 ### `omni-mcp cli`
 

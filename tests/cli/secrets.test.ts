@@ -3,7 +3,7 @@ import {
   cliInlineCandidates,
   inlineConflicts,
   parseRenames,
-} from "../../src/cli/commands/secrets.js";
+} from "../../src/cli/commands/variables.js";
 import type { OmniMcpConfig } from "../../src/config/schema.js";
 
 function config(): OmniMcpConfig {
@@ -41,7 +41,7 @@ function config(): OmniMcpConfig {
     tokens: { default: { profile: "default", disabled: false } },
     security: { unknownTokenPolicy: "fallback-to-default" },
     trafficLog: { enabled: true, retentionDays: 7, maxBytes: 5242880 },
-    secretStore: { backend: "file", keychainService: "omni-mcp" },
+    secretBackend: { backend: "file", keychainService: "omni-mcp" },
   };
 }
 
@@ -59,7 +59,7 @@ describe("secrets CLI migration helpers", () => {
       JIRA_TOKEN: "JIRA_API_TOKEN",
     });
     expect(() => parseRenames(["bad"])).toThrow(/NAME=NEW_NAME/);
-    expect(() => parseRenames(["JIRA_TOKEN=bad-name"])).toThrow(/Invalid secret name/);
+    expect(() => parseRenames(["JIRA_TOKEN=bad-name"])).toThrow(/Invalid variable name/);
 
     const raw = config();
     const [candidate] = cliInlineCandidates(raw);

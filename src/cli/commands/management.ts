@@ -87,6 +87,7 @@ function registerServerCommands(program: Command): void {
       delete raw.servers[name];
       for (const profile of Object.values(raw.profiles ?? {})) {
         profile.allow = profile.allow.filter((entry) => entry !== name);
+        if (profile.denyTools) delete profile.denyTools[name];
       }
     });
   }));
@@ -103,6 +104,25 @@ function registerServerCommands(program: Command): void {
         if (field === "enabled") target.enabled = enabled;
         else target.cli = { enabled };
       })));
+  }
+  for (const [commandName, enabled] of [["enable-tool", true], ["disable-tool", false]] as const) {
+    common(server.command(`${commandName} <server> <tool>`)).action(safe(
+      (serverName: string, toolName: string, options: CommonOptions) =>
+        mutateConfig(
+          options,
+          `/api/servers/${encodeURIComponent(serverName)}/tools/${encodeURIComponent(toolName)}/enabled`,
+          "PUT",
+          { enabled },
+          (raw) => {
+            const target = raw.servers?.[serverName];
+            if (!target) throw new Error(`Unknown server "${serverName}"`);
+            const disabled = new Set(target.disabledTools ?? []);
+            if (enabled) disabled.delete(toolName);
+            else disabled.add(toolName);
+            target.disabledTools = [...disabled];
+          },
+        ),
+    ));
   }
 }
 
@@ -121,34 +141,96 @@ function registerProfileCommands(program: Command): void {
     .action(safe((name: string, options: CommonOptions & { allow: string[] }) =>
       mutateConfig(options, `/api/profiles/${encodeURIComponent(name)}`, "PUT", { allow: options.allow }, (raw) => {
         raw.profiles ??= {};
-        raw.profiles[name] = { allow: options.allow };
+        raw.profiles[name] = {
+          allow: options.allow,
+          ...(raw.profiles[name]?.denyTools ? { denyTools: raw.profiles[name].denyTools } : {}),
+        };
       })));
   common(profile.command("remove <name>").alias("delete").option("--yes", "Skip confirmation")).action(safe(async (name: string, options: CommonOptions) => {
     await confirmDestructive(`Delete profile "${name}"?`, options);
     return mutateConfig(options, `/api/profiles/${encodeURIComponent(name)}`, "DELETE", undefined, (raw) => {
       if (name === "default") throw new Error('The "default" profile cannot be removed');
       if (!raw.profiles?.[name]) throw new Error(`Unknown profile "${name}"`);
+      const usedBy = Object.entries(raw.tokens ?? {})
+        .filter(([, token]) =>
+          (token.profiles ?? (token.profile ? [token.profile] : [])).includes(name),
+        )
+        .map(([tokenName]) => tokenName);
+      if (usedBy.length > 0) {
+        throw new Error(`Profile "${name}" is assigned to Token${usedBy.length === 1 ? "" : "s"}: ${usedBy.join(", ")}`);
+      }
       delete raw.profiles[name];
     });
   }));
+  for (const [commandName, enabled] of [["enable-tool", true], ["disable-tool", false]] as const) {
+    common(profile.command(`${commandName} <profile> <server> <tool>`)).action(safe(
+      (profileName: string, serverName: string, toolName: string, options: CommonOptions) =>
+        mutateConfig(
+          options,
+          `/api/profiles/${encodeURIComponent(profileName)}/servers/${encodeURIComponent(serverName)}/tools/${encodeURIComponent(toolName)}/enabled`,
+          "PUT",
+          { enabled },
+          (raw) => {
+            const target = raw.profiles?.[profileName];
+            if (!target) throw new Error(`Unknown profile "${profileName}"`);
+            if (!raw.servers?.[serverName]) throw new Error(`Unknown server "${serverName}"`);
+            const denied = new Set(target.denyTools?.[serverName] ?? []);
+            if (enabled) denied.delete(toolName);
+            else denied.add(toolName);
+            target.denyTools ??= {};
+            if (denied.size > 0) target.denyTools[serverName] = [...denied];
+            else delete target.denyTools[serverName];
+          },
+        ),
+    ));
+  }
+  common(profile.command("apply-tools <source>")
+    .requiredOption("--server <name>", "Server whose deny list is copied")
+    .requiredOption("--to <profiles...>", "Target profiles"))
+    .action(safe((
+      source: string,
+      options: CommonOptions & { server: string; to: string[] },
+    ) => mutateConfig(
+      options,
+      `/api/profiles/${encodeURIComponent(source)}/apply-deny-tools`,
+      "POST",
+      { server: options.server, targets: options.to },
+      (raw) => {
+        const sourceProfile = raw.profiles?.[source];
+        if (!sourceProfile) throw new Error(`Unknown profile "${source}"`);
+        for (const targetName of options.to) {
+          const target = raw.profiles?.[targetName];
+          if (!target) throw new Error(`Unknown profile "${targetName}"`);
+          if (!target.allow.includes("*") && !target.allow.includes(options.server)) continue;
+          target.denyTools ??= {};
+          const denied = sourceProfile.denyTools?.[options.server] ?? [];
+          if (denied.length > 0) target.denyTools[options.server] = [...denied];
+          else delete target.denyTools[options.server];
+        }
+      },
+    )));
 }
 
 function registerTokenCommands(program: Command): void {
-  const token = program.command("token").description("Manage token-to-profile mappings");
+  const token = program.command("token").description("Manage Token profile mappings");
   common(token.command("list")).action(safe(async (options: CommonOptions) => {
     const tokens = (await getConfig(options)).tokens;
     output(Object.entries(tokens).map(([name, value]) => ({ name, ...value })), options);
   }));
   common(token.command("show <name>").alias("get")).action(safe(async (name: string, options: CommonOptions) => {
     const value = (await getConfig(options)).tokens[name];
-    if (!value) throw new Error(`Unknown token "${name}"`);
+    if (!value) throw new Error(`Unknown Token "${name}"`);
     output({ name, ...value }, options);
   }));
-  common(token.command("set <name>").aliases(["add", "create", "update"]).requiredOption("--profile <name>", "Profile binding")
+  common(token.command("set <name>").aliases(["add", "create", "update"])
+    .option("--profiles <names...>", "Profile bindings")
+    .option("--profile <name>", "Legacy single profile binding")
     .option("--description <text>", "Description").option("--disabled", "Disable token"))
-    .action(safe((name: string, options: CommonOptions & { profile: string; description?: string; disabled?: boolean }) => {
+    .action(safe((name: string, options: CommonOptions & { profiles?: string[]; profile?: string; description?: string; disabled?: boolean }) => {
+      const profiles = options.profiles ?? (options.profile ? [options.profile] : []);
+      if (profiles.length === 0) throw new Error("At least one profile is required");
       const value = {
-        profile: options.profile,
+        profiles,
         ...(options.description ? { description: options.description } : {}),
         disabled: options.disabled ?? false,
       };
@@ -158,7 +240,7 @@ function registerTokenCommands(program: Command): void {
       });
     }));
   common(token.command("remove <name>").alias("delete").option("--yes", "Skip confirmation")).action(safe(async (name: string, options: CommonOptions) => {
-    await confirmDestructive(`Delete token "${name}"?`, options);
+    await confirmDestructive(`Delete Token "${name}"?`, options);
     return mutateConfig(options, `/api/tokens/${encodeURIComponent(name)}`, "DELETE", undefined, (raw) => {
       if (name === "default") throw new Error('The "default" token cannot be removed');
       if (!raw.tokens?.[name]) throw new Error(`Unknown token "${name}"`);
@@ -168,8 +250,13 @@ function registerTokenCommands(program: Command): void {
   for (const [commandName, disabled] of [["enable", false], ["disable", true]] as const) {
     common(token.command(`${commandName} <name>`)).action(safe(async (name: string, options: CommonOptions) => {
       const current = (await getConfig(options)).tokens[name];
-      if (!current) throw new Error(`Unknown token "${name}"`);
-      const value = { ...current, disabled };
+      if (!current) throw new Error(`Unknown Token "${name}"`);
+      const { profile, ...canonical } = current;
+      const value = {
+        ...canonical,
+        profiles: current.profiles ?? (profile ? [profile] : []),
+        disabled,
+      };
       return mutateConfig(options, `/api/tokens/${encodeURIComponent(name)}`, "PUT", value, (raw) => {
         if (!raw.tokens?.[name]) throw new Error(`Unknown token "${name}"`);
         raw.tokens[name] = value;
@@ -283,7 +370,7 @@ async function getConfig(options: CommonOptions): Promise<OmniMcpConfig> {
 async function mutateConfig(
   options: CommonOptions,
   endpoint: string,
-  method: "PUT" | "DELETE",
+  method: "PUT" | "POST" | "DELETE",
   body: unknown,
   edit: (raw: RawConfig) => void,
 ): Promise<void> {

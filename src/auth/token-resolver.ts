@@ -1,4 +1,4 @@
-import type { OmniMcpConfig, ProfileConfig } from "../config/index.js";
+import type { OmniMcpConfig, ProfileConfig, TokenConfig } from "../config/index.js";
 
 export interface TokenResolutionResult {
   profile: string;
@@ -24,7 +24,7 @@ export function resolveToken(
     if (policy === "reject") {
       return {
         profile: "",
-        profileConfig: { allow: [] },
+        profileConfig: { allow: [], denyTools: {} },
         tokenName: null,
         status: "rejected",
         reason: "no_token",
@@ -40,22 +40,25 @@ export function resolveToken(
     if (tokenConfig.disabled) {
       return {
         profile: "",
-        profileConfig: { allow: [] },
+        profileConfig: { allow: [], denyTools: {} },
         tokenName,
         status: "rejected",
         reason: "token_disabled",
       };
     }
 
-    const profileConfig = config.profiles[tokenConfig.profile];
-    if (!profileConfig) {
+    const profileNames = getTokenProfiles(tokenConfig);
+    const profileConfigs = profileNames
+      .map((name) => config.profiles[name])
+      .filter((profile): profile is ProfileConfig => profile !== undefined);
+    if (profileConfigs.length !== profileNames.length) {
       // Profile doesn't exist (shouldn't happen with valid config)
       return fallbackToDefault(config);
     }
 
     return {
-      profile: tokenConfig.profile,
-      profileConfig,
+      profile: [...profileNames].sort().join("+"),
+      profileConfig: mergeProfiles(profileConfigs, Object.keys(config.servers)),
       tokenName,
       status: "authenticated",
     };
@@ -65,7 +68,7 @@ export function resolveToken(
   if (policy === "reject") {
     return {
       profile: "",
-      profileConfig: { allow: [] },
+      profileConfig: { allow: [], denyTools: {} },
       tokenName,
       status: "rejected",
       reason: "unknown_token",
@@ -101,15 +104,59 @@ export function getAllowedServers(
   return profileConfig.allow.filter((name) => allServerNames.includes(name));
 }
 
+export function isToolAllowed(
+  serverName: string,
+  toolName: string,
+  profileConfig: ProfileConfig,
+): boolean {
+  return isServerAllowed(serverName, profileConfig) &&
+    !(profileConfig.denyTools?.[serverName] ?? []).includes(toolName);
+}
+
+export function getTokenProfiles(token: TokenConfig): string[] {
+  return [...new Set(token.profiles ?? (token.profile ? [token.profile] : []))];
+}
+
+function mergeProfiles(
+  profiles: ProfileConfig[],
+  allServerNames: string[],
+): ProfileConfig {
+  const allow = profiles.some((profile) => profile.allow.includes("*"))
+    ? ["*"]
+    : [...new Set(profiles.flatMap((profile) => profile.allow))];
+  const denyTools: Record<string, string[]> = {};
+
+  for (const serverName of allServerNames) {
+    const grantingProfiles = profiles.filter((profile) => isServerAllowed(serverName, profile));
+    if (grantingProfiles.length === 0) continue;
+    const [first, ...rest] = grantingProfiles;
+    const deniedByEveryGrant = new Set(first?.denyTools?.[serverName] ?? []);
+    for (const profile of rest) {
+      const denied = new Set(profile.denyTools?.[serverName] ?? []);
+      for (const toolName of deniedByEveryGrant) {
+        if (!denied.has(toolName)) deniedByEveryGrant.delete(toolName);
+      }
+    }
+    if (deniedByEveryGrant.size > 0) {
+      denyTools[serverName] = [...deniedByEveryGrant];
+    }
+  }
+
+  return { allow, denyTools };
+}
+
 function fallbackToDefault(config: OmniMcpConfig): TokenResolutionResult {
-  // Try default token's profile first
+  // Try the default Token's profiles first
   const defaultToken = config.tokens["default"];
   if (defaultToken) {
-    const profileConfig = config.profiles[defaultToken.profile];
-    if (profileConfig) {
+    const profileNames = getTokenProfiles(defaultToken);
+    const profileConfigs = profileNames
+      .map((name) => config.profiles[name])
+      .filter((profile): profile is ProfileConfig => profile !== undefined);
+    if (profileConfigs.length === profileNames.length && profileConfigs.length > 0) {
       return {
-        profile: defaultToken.profile,
-        profileConfig,
+        profile: [...profileNames].sort().join("+"),
+        profileConfig: mergeProfiles(profileConfigs, Object.keys(config.servers)),
         tokenName: "default",
         status: "fallback",
       };
@@ -131,7 +178,7 @@ function fallbackToDefault(config: OmniMcpConfig): TokenResolutionResult {
   const defaultProfile = config.profiles["default"];
   return {
     profile: "default",
-    profileConfig: defaultProfile ?? { allow: [] },
+    profileConfig: defaultProfile ?? { allow: [], denyTools: {} },
     tokenName: null,
     status: "fallback",
   };

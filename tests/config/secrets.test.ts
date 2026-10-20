@@ -38,7 +38,7 @@ function sample(): OmniMcpConfig {
     tokens: { default: { profile: "default", disabled: false } },
     security: { unknownTokenPolicy: "fallback-to-default" },
     trafficLog: { enabled: true, retentionDays: 7, maxBytes: 5242880 },
-    secretStore: { backend: "file", keychainService: "omni-mcp" },
+    secretBackend: { backend: "file", keychainService: "omni-mcp" },
   };
 }
 

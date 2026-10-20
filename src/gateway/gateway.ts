@@ -9,6 +9,8 @@ import type {
   SecretStoreOptions,
   ServerConfig,
   TokenConfig,
+  VariableStoreOptions,
+  VariableType,
 } from "../config/index.js";
 import {
   KeychainSecretStore,
@@ -20,9 +22,10 @@ import {
   redactConfig,
   secretReferenceName,
   validateConfig,
+  VariableStore,
 } from "../config/index.js";
-import { DEFAULT_SECRETS_PATH } from "../cli/config-path.js";
-import { resolveToken, isServerAllowed, getAllowedServers } from "../auth/index.js";
+import { DEFAULT_SECRETS_PATH, DEFAULT_VARIABLES_PATH } from "../cli/config-path.js";
+import { resolveToken, isServerAllowed, isToolAllowed, getAllowedServers } from "../auth/index.js";
 import type { ServerAdapter, Tool, ToolResult } from "../transport/index.js";
 import { Logger } from "../logger.js";
 import { VERSION } from "../version.js";
@@ -37,6 +40,23 @@ import {
 
 const TOOL_SEPARATOR = "__";
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+
+interface VariablesPayload {
+  secretBackend: "file" | "keychain";
+  secretPath?: string;
+  variablesPath: string;
+  keychainService: string;
+  keychainSupported: boolean;
+  secretCount: number;
+  plainCount: number;
+  variables: Array<{
+    name: string;
+    type: VariableType;
+    set: boolean;
+    value?: string;
+    usages: Array<{ path: string; server?: string }>;
+  }>;
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -60,6 +80,7 @@ export interface GatewayOptions {
   version?: string;
   trafficLogDir?: string;
   secretStoreOptions?: SecretStoreOptions;
+  variableStoreOptions?: VariableStoreOptions;
   onSaveConfig?: (next: OmniMcpConfig) => Promise<OmniMcpConfig | void>;
   onReloadFromDisk?: () => Promise<{ warnings: string[] }>;
 }
@@ -77,6 +98,7 @@ export class Gateway {
   private version: string;
   private trafficLog: TrafficLog;
   private secretStoreOptions: SecretStoreOptions;
+  private variableStoreOptions: VariableStoreOptions;
   private onSaveConfig?: (next: OmniMcpConfig) => Promise<OmniMcpConfig | void>;
   private onReloadFromDisk?: () => Promise<{ warnings: string[] }>;
 
@@ -89,6 +111,7 @@ export class Gateway {
     this.version = options.version ?? VERSION;
     this.trafficLog = new TrafficLog(options.config.trafficLog, options.trafficLogDir);
     this.secretStoreOptions = options.secretStoreOptions ?? {};
+    this.variableStoreOptions = options.variableStoreOptions ?? {};
     this.onSaveConfig = options.onSaveConfig;
     this.onReloadFromDisk = options.onReloadFromDisk;
   }
@@ -240,14 +263,20 @@ export class Gateway {
     const path = url.pathname;
     const serverToolsMatch = path.match(/^\/api\/servers\/([^/]+)\/tools$/);
     const serverToolCallMatch = path.match(/^\/api\/servers\/([^/]+)\/tools\/call$/);
+    const serverToolEnabledMatch = path.match(/^\/api\/servers\/([^/]+)\/tools\/([^/]+)\/enabled$/);
     const cliServerToolsMatch = path.match(/^\/api\/cli\/servers\/([^/]+)\/tools$/);
     const cliServerToolCallMatch = path.match(/^\/api\/cli\/servers\/([^/]+)\/tools\/call$/);
     const serverCliEnabledMatch = path.match(/^\/api\/servers\/([^/]+)\/cli-enabled$/);
     const serverEnabledMatch = path.match(/^\/api\/servers\/([^/]+)\/enabled$/);
     const serverMatch = path.match(/^\/api\/servers\/([^/]+)$/);
     const profileMatch = path.match(/^\/api\/profiles\/([^/]+)$/);
+    const profileToolEnabledMatch = path.match(
+      /^\/api\/profiles\/([^/]+)\/servers\/([^/]+)\/tools\/([^/]+)\/enabled$/,
+    );
+    const profileApplyToolsMatch = path.match(/^\/api\/profiles\/([^/]+)\/apply-deny-tools$/);
     const tokenMatch = path.match(/^\/api\/tokens\/([^/]+)$/);
-    const secretMatch = path.match(/^\/api\/secrets\/([^/]+)$/);
+    const variableTypeMatch = path.match(/^\/api\/variables\/([^/]+)\/type$/);
+    const variableMatch = path.match(/^\/api\/variables\/([^/]+)$/);
 
     try {
       if (path === "/api/health" && method === "GET") {
@@ -255,24 +284,19 @@ export class Gateway {
         return;
       }
 
-      if (path === "/api/secrets" && method === "GET") {
-        json(res, 200, this.secretPayload());
+      if (path === "/api/variables" && method === "GET") {
+        json(res, 200, this.variablePayload());
         return;
       }
 
-      if (path === "/api/secrets/status" && method === "GET") {
-        const payload = this.secretPayload();
-        json(res, 200, payload);
-        return;
-      }
-
-      if (path === "/api/secrets/sync" && method === "POST") {
+      if (path === "/api/variables/sync" && method === "POST") {
+        this.activeVariableStore().list();
         await this.reapplyRawConfig();
-        json(res, 200, { ok: true, ...this.secretPayload() });
+        json(res, 200, { ok: true, ...this.variablePayload() });
         return;
       }
 
-      if (path === "/api/secrets/import-keychain" && method === "POST") {
+      if (path === "/api/variables/import-keychain" && method === "POST") {
         const body = await readJson(req);
         if (
           !isRecord(body) ||
@@ -289,49 +313,49 @@ export class Gateway {
           json(res, 404, { error: `Keychain item ${body.service}/${body.account} was not found` });
           return;
         }
-        this.activeSecretStore().set(body.name, value);
+        this.activeVariableStore().set(body.name, value, "secret");
         await this.reapplyRawConfig();
-        json(res, 200, { ok: true, ...this.secretPayload() });
+        json(res, 200, { ok: true, ...this.variablePayload() });
         return;
       }
 
-      if (path === "/api/secrets/backend" && method === "POST") {
+      if (path === "/api/variables/secret-backend" && method === "POST") {
         const body = await readJson(req);
         if (!isRecord(body) || (body.backend !== "file" && body.backend !== "keychain")) {
           json(res, 400, { error: 'Validation failed: backend must be "file" or "keychain"' });
           return;
         }
-        if (body.backend === this.rawConfig.secretStore.backend) {
-          json(res, 200, { ok: true, migrated: 0, ...this.secretPayload() });
+        if (body.backend === this.rawConfig.secretBackend.backend) {
+          json(res, 200, { ok: true, migrated: 0, ...this.variablePayload() });
           return;
         }
-        const destinationConfig: OmniMcpConfig["secretStore"] = {
-          ...this.rawConfig.secretStore,
+        const destinationConfig: OmniMcpConfig["secretBackend"] = {
+          ...this.rawConfig.secretBackend,
           backend: body.backend,
         };
         const sourceStore = this.activeSecretStore();
         const destinationStore = createSecretStore(destinationConfig, this.secretStoreOptions);
         const migrated = migrateSecretStore(sourceStore, destinationStore);
         const next = structuredClone(this.rawConfig);
-        next.secretStore = destinationConfig;
+        next.secretBackend = destinationConfig;
         try {
           await this.saveIncomingConfig(next);
         } catch (error) {
           migrateSecretStore(destinationStore, sourceStore);
           throw error;
         }
-        json(res, 200, { ok: true, migrated, ...this.secretPayload() });
+        json(res, 200, { ok: true, migrated, ...this.variablePayload() });
         return;
       }
 
-      if (path === "/api/secrets/backend" && method === "GET") {
+      if (path === "/api/variables/secret-backend" && method === "GET") {
         const backend = url.searchParams.get("backend");
         if (backend !== "file" && backend !== "keychain") {
           json(res, 400, { error: 'backend query must be "file" or "keychain"' });
           return;
         }
         json(res, 200, {
-          from: this.rawConfig.secretStore.backend,
+          from: this.rawConfig.secretBackend.backend,
           to: backend,
           count: this.activeSecretStore().list().length,
           keychainSupported: process.platform === "darwin",
@@ -339,16 +363,17 @@ export class Gateway {
         return;
       }
 
-      if (path === "/api/secrets/migrate-inline" && method === "GET") {
+      if (path === "/api/variables/migrate-inline" && method === "GET") {
         const candidates = inlineSecretCandidates(this.rawConfig);
+        const variables = this.activeVariableStore();
         json(res, 200, {
           candidates: candidates.map(withoutSecretValue),
-          conflicts: migrationConflicts(candidates, this.activeSecretStore()),
+          conflicts: migrationConflicts(candidates, variables),
         });
         return;
       }
 
-      if (path === "/api/secrets/migrate-inline" && method === "POST") {
+      if (path === "/api/variables/migrate-inline" && method === "POST") {
         const body = await readJson(req);
         const renames = isRecord(body) && isRecord(body.renames) ? body.renames : {};
         const candidates = inlineSecretCandidates(this.rawConfig).map((candidate) => {
@@ -360,7 +385,7 @@ export class Gateway {
           }
           return candidate;
         });
-        const store = this.activeSecretStore();
+        const store = this.activeVariableStore();
         const conflicts = migrationConflicts(candidates, store);
         if (conflicts.length > 0) {
           json(res, 409, { error: "Migration has variable-name collisions", conflicts });
@@ -371,53 +396,86 @@ export class Gateway {
         try {
           for (const candidate of candidates) {
             if (!previous.has(candidate.name)) previous.set(candidate.name, store.get(candidate.name));
-            store.set(candidate.name, candidate.value);
+            store.set(candidate.name, candidate.value, "secret");
             applyInlineReference(next, candidate);
           }
           await this.saveIncomingConfig(next);
         } catch (error) {
           for (const [name, oldValue] of previous) {
             if (oldValue === undefined) store.delete(name);
-            else store.set(name, oldValue);
+            else store.set(name, oldValue, "secret");
           }
           throw error;
         }
-        json(res, 200, { ok: true, migrated: candidates.length, ...this.secretPayload() });
+        json(res, 200, { ok: true, migrated: candidates.length, ...this.variablePayload() });
+        return;
+      }
+
+      if (variableTypeMatch && method === "PUT") {
+        const name = decodeURIComponent(variableTypeMatch[1]!);
+        const body = await readJson(req);
+        if (!isRecord(body) || (body.type !== "secret" && body.type !== "plain")) {
+          json(res, 400, { error: 'Validation failed: type must be "secret" or "plain"' });
+          return;
+        }
+        this.activeVariableStore().convert(name, body.type);
+        await this.reapplyRawConfig();
+        json(res, 200, { ok: true, ...this.variablePayload() });
         return;
       }
 
       if (
-        secretMatch &&
-        !["sync", "status", "backend", "import-keychain", "migrate-inline"].includes(secretMatch[1]!) &&
+        variableMatch &&
+        !["sync", "secret-backend", "import-keychain", "migrate-inline"].includes(variableMatch[1]!) &&
         method === "PUT"
       ) {
-        const name = decodeURIComponent(secretMatch[1]!);
+        const name = decodeURIComponent(variableMatch[1]!);
         const body = await readJson(req);
-        if (!isRecord(body) || typeof body.value !== "string" || body.value.length === 0) {
-          json(res, 400, { error: "Validation failed: value must be a non-empty string" });
+        if (
+          !isRecord(body) ||
+          typeof body.value !== "string" ||
+          body.value.length === 0 ||
+          (body.type !== undefined && body.type !== "secret" && body.type !== "plain")
+        ) {
+          json(res, 400, { error: "Validation failed: value and valid type are required" });
           return;
         }
-        this.activeSecretStore().set(name, body.value);
+        this.activeVariableStore().set(
+          name,
+          body.value,
+          (body.type as VariableType | undefined) ?? "secret",
+        );
         await this.reapplyRawConfig();
-        json(res, 200, { ok: true, ...this.secretPayload() });
+        json(res, 200, { ok: true, ...this.variablePayload() });
         return;
       }
 
       if (
-        secretMatch &&
-        !["sync", "status", "backend", "import-keychain", "migrate-inline"].includes(secretMatch[1]!) &&
+        variableMatch &&
+        !["sync", "secret-backend", "import-keychain", "migrate-inline"].includes(variableMatch[1]!) &&
+        method === "GET"
+      ) {
+        const name = decodeURIComponent(variableMatch[1]!);
+        const variable = this.variablePayload().variables.find((item) => item.name === name);
+        json(res, variable ? 200 : 404, variable ?? { error: `Variable "${name}" was not found` });
+        return;
+      }
+
+      if (
+        variableMatch &&
+        !["sync", "secret-backend", "import-keychain", "migrate-inline"].includes(variableMatch[1]!) &&
         method === "DELETE"
       ) {
-        const name = decodeURIComponent(secretMatch[1]!);
+        const name = decodeURIComponent(variableMatch[1]!);
         const usages = collectSecretUsages(this.rawConfig)[name] ?? [];
         if (usages.length > 0) {
-          json(res, 409, { error: `Secret "${name}" is still referenced`, usages });
+          json(res, 409, { error: `Variable "${name}" is still referenced`, usages });
           return;
         }
-        const deleted = this.activeSecretStore().delete(name);
+        const deleted = this.activeVariableStore().delete(name);
         json(res, deleted ? 200 : 404, deleted
-          ? { ok: true, deleted: true, ...this.secretPayload() }
-          : { error: `Secret "${name}" was not found` });
+          ? { ok: true, deleted: true, ...this.variablePayload() }
+          : { error: `Variable "${name}" was not found` });
         return;
       }
 
@@ -491,7 +549,8 @@ export class Gateway {
           });
         for (const server of servers) {
           if (server.status === "connected") {
-            server.toolCount = (await this.adapters.get(server.name)!.listTools()).length;
+            server.toolCount = (await this.adapters.get(server.name)!.listTools())
+              .filter((tool) => !this.isGloballyDisabled(server.name, tool.name)).length;
           }
         }
         json(res, 200, { servers });
@@ -505,7 +564,8 @@ export class Gateway {
           json(res, target.status, { error: target.error });
           return;
         }
-        const tools = await target.adapter.listTools();
+        const tools = (await target.adapter.listTools())
+          .filter((tool) => !this.isGloballyDisabled(name, tool.name));
         json(res, 200, {
           server: name,
           status: target.adapter.status,
@@ -549,6 +609,11 @@ export class Gateway {
           json(res, target.status, { error: target.error });
           return;
         }
+        if (this.isGloballyDisabled(name, toolName)) {
+          await logCliCall("error");
+          json(res, 403, { error: `Tool "${toolName}" is globally disabled` });
+          return;
+        }
         const tools = await target.adapter.listTools();
         if (!tools.some((tool) => tool.name === toolName)) {
           await logCliCall("error");
@@ -582,7 +647,13 @@ export class Gateway {
           json(res, target.status, { error: target.error });
           return;
         }
-        const tools = await target.adapter.listTools();
+        const tools = (await target.adapter.listTools()).map((tool) => ({
+          ...tool,
+          enabled: !this.isGloballyDisabled(name, tool.name),
+          deniedByProfiles: Object.entries(this.config.profiles)
+            .filter(([, profile]) => (profile.denyTools?.[name] ?? []).includes(tool.name))
+            .map(([profileName]) => profileName),
+        }));
         json(res, 200, {
           server: name,
           status: target.adapter.status,
@@ -613,6 +684,10 @@ export class Gateway {
           json(res, 400, { error: "Validation failed: arguments must be an object" });
           return;
         }
+        if (this.isGloballyDisabled(name, body.tool)) {
+          json(res, 403, { error: `Tool "${body.tool}" is globally disabled` });
+          return;
+        }
 
         const tools = await target.adapter.listTools();
         if (!tools.some((tool) => tool.name === body.tool)) {
@@ -636,6 +711,29 @@ export class Gateway {
           const message = err instanceof Error ? err.message : "Unknown error";
           json(res, 502, { error: `Tool call failed: ${message}` });
         }
+        return;
+      }
+
+      if (serverToolEnabledMatch && method === "PUT") {
+        const name = decodeURIComponent(serverToolEnabledMatch[1]!);
+        const toolName = decodeURIComponent(serverToolEnabledMatch[2]!);
+        const body = (await readJson(req)) as { enabled?: unknown };
+        const next = structuredClone(this.rawConfig);
+        const server = next.servers[name];
+        if (!server) {
+          json(res, 404, { error: `Unknown server "${name}"` });
+          return;
+        }
+        if (typeof body.enabled !== "boolean") {
+          json(res, 400, { error: "Validation failed: enabled must be a boolean" });
+          return;
+        }
+        const disabled = new Set(server.disabledTools ?? []);
+        if (body.enabled) disabled.delete(toolName);
+        else disabled.add(toolName);
+        server.disabledTools = [...disabled];
+        await this.saveIncomingConfig(next);
+        json(res, 200, { config: redactConfig(this.rawConfig), health: this.healthPayload() });
         return;
       }
 
@@ -685,7 +783,10 @@ export class Gateway {
         const name = decodeURIComponent(serverMatch[1]!);
         const body = (await readJson(req)) as ServerConfig;
         const next = structuredClone(this.rawConfig);
-        next.servers[name] = body;
+        const existing = next.servers[name];
+        next.servers[name] = existing?.disabledTools && body.disabledTools === undefined
+          ? { ...body, disabledTools: existing.disabledTools }
+          : body;
         await this.saveIncomingConfig(next);
         json(res, 200, { config: redactConfig(this.rawConfig) });
         return;
@@ -701,9 +802,85 @@ export class Gateway {
         delete next.servers[name];
         for (const profile of Object.values(next.profiles)) {
           profile.allow = profile.allow.filter((s) => s !== name);
+          if (profile.denyTools) delete profile.denyTools[name];
         }
         await this.saveIncomingConfig(next);
         json(res, 200, { config: redactConfig(this.rawConfig) });
+        return;
+      }
+
+      if (profileToolEnabledMatch && method === "PUT") {
+        const profileName = decodeURIComponent(profileToolEnabledMatch[1]!);
+        const serverName = decodeURIComponent(profileToolEnabledMatch[2]!);
+        const toolName = decodeURIComponent(profileToolEnabledMatch[3]!);
+        const body = (await readJson(req)) as { enabled?: unknown };
+        const next = structuredClone(this.rawConfig);
+        const profile = next.profiles[profileName];
+        if (!profile) {
+          json(res, 404, { error: `Unknown profile "${profileName}"` });
+          return;
+        }
+        if (!(serverName in next.servers)) {
+          json(res, 404, { error: `Unknown server "${serverName}"` });
+          return;
+        }
+        if (typeof body.enabled !== "boolean") {
+          json(res, 400, { error: "Validation failed: enabled must be a boolean" });
+          return;
+        }
+        const denied = new Set(profile.denyTools?.[serverName] ?? []);
+        if (body.enabled) denied.delete(toolName);
+        else denied.add(toolName);
+        profile.denyTools ??= {};
+        if (denied.size > 0) profile.denyTools[serverName] = [...denied];
+        else delete profile.denyTools[serverName];
+        await this.saveIncomingConfig(next);
+        json(res, 200, { config: redactConfig(this.rawConfig) });
+        return;
+      }
+
+      if (profileApplyToolsMatch && method === "POST") {
+        const sourceName = decodeURIComponent(profileApplyToolsMatch[1]!);
+        const body = await readJson(req);
+        if (
+          !isRecord(body) ||
+          typeof body.server !== "string" ||
+          !Array.isArray(body.targets) ||
+          !body.targets.every((target) => typeof target === "string")
+        ) {
+          json(res, 400, { error: "Validation failed: server and targets are required" });
+          return;
+        }
+        const next = structuredClone(this.rawConfig);
+        const source = next.profiles[sourceName];
+        if (!source) {
+          json(res, 404, { error: `Unknown profile "${sourceName}"` });
+          return;
+        }
+        if (!(body.server in next.servers)) {
+          json(res, 404, { error: `Unknown server "${body.server}"` });
+          return;
+        }
+        const applied: string[] = [];
+        const skipped: string[] = [];
+        for (const targetName of body.targets) {
+          const target = next.profiles[targetName];
+          if (!target) {
+            json(res, 404, { error: `Unknown profile "${targetName}"` });
+            return;
+          }
+          if (!target.allow.includes("*") && !target.allow.includes(body.server)) {
+            skipped.push(targetName);
+            continue;
+          }
+          target.denyTools ??= {};
+          const sourceDenied = source.denyTools?.[body.server] ?? [];
+          if (sourceDenied.length > 0) target.denyTools[body.server] = [...sourceDenied];
+          else delete target.denyTools[body.server];
+          applied.push(targetName);
+        }
+        await this.saveIncomingConfig(next);
+        json(res, 200, { config: redactConfig(this.rawConfig), applied, skipped });
         return;
       }
 
@@ -711,7 +888,10 @@ export class Gateway {
         const name = decodeURIComponent(profileMatch[1]!);
         const body = (await readJson(req)) as ProfileConfig;
         const next = structuredClone(this.rawConfig);
-        next.profiles[name] = body;
+        const existing = next.profiles[name];
+        next.profiles[name] = existing?.denyTools && body.denyTools === undefined
+          ? { ...body, denyTools: existing.denyTools }
+          : body;
         await this.saveIncomingConfig(next);
         json(res, 200, { config: redactConfig(this.rawConfig) });
         return;
@@ -728,6 +908,17 @@ export class Gateway {
           json(res, 404, { error: `Unknown profile "${name}"` });
           return;
         }
+        const usedBy = Object.entries(next.tokens)
+          .filter(([, token]) =>
+            (token.profiles ?? (token.profile ? [token.profile] : [])).includes(name),
+          )
+          .map(([tokenName]) => tokenName);
+        if (usedBy.length > 0) {
+          json(res, 409, {
+            error: `Profile "${name}" is assigned to Token${usedBy.length === 1 ? "" : "s"}: ${usedBy.join(", ")}`,
+          });
+          return;
+        }
         delete next.profiles[name];
         await this.saveIncomingConfig(next);
         json(res, 200, { config: redactConfig(this.rawConfig) });
@@ -738,7 +929,11 @@ export class Gateway {
         const name = decodeURIComponent(tokenMatch[1]!);
         const body = (await readJson(req)) as TokenConfig;
         const next = structuredClone(this.rawConfig);
-        next.tokens[name] = body;
+        const { profile, ...canonical } = body;
+        next.tokens[name] = {
+          ...canonical,
+          profiles: body.profiles ?? (profile ? [profile] : []),
+        };
         await this.saveIncomingConfig(next);
         json(res, 200, { config: redactConfig(this.rawConfig) });
         return;
@@ -768,7 +963,7 @@ export class Gateway {
         err instanceof RequestBodyTooLargeError
           ? 413
           : message.startsWith("Validation failed") ||
-        message.startsWith("Invalid secret name") ||
+        message.startsWith("Invalid variable name") ||
         message.includes("only available on macOS")
           ? 400
           : 500;
@@ -776,22 +971,33 @@ export class Gateway {
     }
   }
 
-  private secretPayload(): Record<string, unknown> {
-    const store = this.activeSecretStore();
+  private variablePayload(): VariablesPayload {
+    const store = this.activeVariableStore();
     const usages = collectSecretUsages(this.rawConfig);
-    const storeNames = store.list();
-    const names = new Set([...storeNames, ...Object.keys(usages)]);
-    return {
-      backend: this.rawConfig.secretStore.backend,
-      path: this.rawConfig.secretStore.backend === "file" ? DEFAULT_SECRETS_PATH : undefined,
-      keychainService: this.rawConfig.secretStore.keychainService,
-      keychainSupported: process.platform === "darwin",
-      count: storeNames.length,
-      secrets: [...names].sort().map((name) => ({
+    const stored = store.list();
+    const storedByName = new Map(stored.map((variable) => [variable.name, variable]));
+    const names = new Set([...storedByName.keys(), ...Object.keys(usages)]);
+    const variables = [...names].sort().map((name) => {
+      const variable = storedByName.get(name);
+      return {
         name,
-        set: store.get(name) !== undefined,
+        type: variable?.type ?? "secret" as const,
+        set: variable?.set ?? false,
+        ...(variable?.type === "plain" ? { value: variable.value } : {}),
         usages: usages[name] ?? [],
-      })),
+      };
+    });
+    return {
+      secretBackend: this.rawConfig.secretBackend.backend,
+      ...(this.rawConfig.secretBackend.backend === "file"
+        ? { secretPath: this.secretStoreOptions.filePath ?? DEFAULT_SECRETS_PATH }
+        : {}),
+      variablesPath: this.variableStoreOptions.variablesFilePath ?? DEFAULT_VARIABLES_PATH,
+      keychainService: this.rawConfig.secretBackend.keychainService,
+      keychainSupported: process.platform === "darwin",
+      secretCount: variables.filter((variable) => variable.type === "secret" && variable.set).length,
+      plainCount: variables.filter((variable) => variable.type === "plain" && variable.set).length,
+      variables,
     };
   }
 
@@ -802,7 +1008,11 @@ export class Gateway {
   }
 
   private activeSecretStore(): SecretStore {
-    return createSecretStore(this.rawConfig.secretStore, this.secretStoreOptions);
+    return createSecretStore(this.rawConfig.secretBackend, this.secretStoreOptions);
+  }
+
+  private activeVariableStore(): VariableStore {
+    return new VariableStore(this.activeSecretStore(), this.variableStoreOptions);
   }
 
   private async saveIncomingConfig(raw: unknown): Promise<void> {
@@ -1009,7 +1219,7 @@ export class Gateway {
 
   private async routeRequest(
     rpcRequest: { method: string; params?: unknown; id?: number | string },
-    profileConfig: { allow: string[] },
+    profileConfig: ProfileConfig,
     profileName: string,
     tokenName: string,
   ): Promise<{ result?: unknown; error?: unknown }> {
@@ -1047,7 +1257,7 @@ export class Gateway {
   }
 
   private async handleToolsList(
-    profileConfig: { allow: string[] },
+    profileConfig: ProfileConfig,
   ): Promise<{ tools: Array<{ name: string; description?: string; inputSchema?: unknown }> }> {
     const allServerNames = Array.from(this.adapters.keys());
     const allowedServers = getAllowedServers(profileConfig, allServerNames);
@@ -1059,6 +1269,12 @@ export class Gateway {
 
       const serverTools = await adapter.listTools();
       for (const tool of serverTools) {
+        if (
+          this.isGloballyDisabled(serverName, tool.name) ||
+          !isToolAllowed(serverName, tool.name, profileConfig)
+        ) {
+          continue;
+        }
         tools.push({
           name: `${serverName}${TOOL_SEPARATOR}${tool.name}`,
           description: tool.description,
@@ -1072,7 +1288,7 @@ export class Gateway {
 
   private async handleToolCall(
     params: { name: string; arguments?: Record<string, unknown> },
-    profileConfig: { allow: string[] },
+    profileConfig: ProfileConfig,
     profileName: string,
     tokenName: string,
   ): Promise<{ result?: unknown; error?: unknown }> {
@@ -1119,7 +1335,7 @@ export class Gateway {
 
   private async executeToolCall(
     params: { name: string; arguments?: Record<string, unknown> },
-    profileConfig: { allow: string[] },
+    profileConfig: ProfileConfig,
   ): Promise<{ result?: unknown; error?: unknown }> {
     if (!params?.name) {
       return { error: { code: -32602, message: "Missing tool name" } };
@@ -1149,6 +1365,14 @@ export class Gateway {
         error: { code: -32603, message: "Server not available in active profile" },
       };
     }
+    if (
+      this.isGloballyDisabled(serverName, toolName) ||
+      !isToolAllowed(serverName, toolName, profileConfig)
+    ) {
+      return {
+        error: { code: -32601, message: `Unknown tool: "${params.name}"` },
+      };
+    }
 
     // Check server is connected
     if (adapter.status !== "connected") {
@@ -1171,6 +1395,10 @@ export class Gateway {
         error: { code: -32603, message: `Tool call failed: ${message}` },
       };
     }
+  }
+
+  private isGloballyDisabled(serverName: string, toolName: string): boolean {
+    return (this.config.servers[serverName]?.disabledTools ?? []).includes(toolName);
   }
 }
 
@@ -1222,7 +1450,7 @@ function withoutSecretValue(candidate: InlineSecretCandidate): Omit<InlineSecret
 
 function migrationConflicts(
   candidates: InlineSecretCandidate[],
-  store?: Pick<SecretStore, "get">,
+  store?: Pick<VariableStore, "get" | "getType">,
 ): string[] {
   const values = new Map<string, string>();
   const conflicts = new Set<string>();
@@ -1230,7 +1458,12 @@ function migrationConflicts(
     const previous = values.get(candidate.name);
     if (previous !== undefined && previous !== candidate.value) conflicts.add(candidate.name);
     const stored = store?.get(candidate.name);
-    if (stored !== undefined && stored !== candidate.value) conflicts.add(candidate.name);
+    if (
+      store?.getType(candidate.name) === "plain" ||
+      (stored !== undefined && stored !== candidate.value)
+    ) {
+      conflicts.add(candidate.name);
+    }
     values.set(candidate.name, candidate.value);
   }
   return [...conflicts].sort();

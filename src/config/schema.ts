@@ -8,10 +8,15 @@ const serverCliSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+const toolNamesSchema = z
+  .array(z.string().trim().min(1, "tool name must not be empty"))
+  .transform((names) => [...new Set(names)]);
+
 const stdioServerSchema = z.object({
   type: z.literal("stdio"),
   enabled: z.boolean().default(true),
   cli: serverCliSchema.default({ enabled: false }),
+  disabledTools: toolNamesSchema.optional(),
   command: z.string().min(1, "command is required"),
   args: z.array(z.string()).default([]),
   maxRestarts: z.number().int().min(0).default(3),
@@ -31,6 +36,7 @@ const httpServerSchema = z.object({
   type: z.literal("http"),
   enabled: z.boolean().default(true),
   cli: serverCliSchema.default({ enabled: false }),
+  disabledTools: toolNamesSchema.optional(),
   url: z.string().url("url must be a valid URL"),
   auth: httpAuthSchema.optional(),
   timeoutMs: z.number().int().min(0).default(30000),
@@ -48,15 +54,24 @@ const serverSchema = z.discriminatedUnion("type", [
 
 const profileSchema = z.object({
   allow: z.array(z.string()).min(1, "allow must contain at least one entry"),
+  denyTools: z.record(z.string(), toolNamesSchema).optional(),
 });
 
 // --- Token schema ---
 
-const tokenSchema = z.object({
-  profile: z.string().min(1, "profile is required"),
-  description: z.string().optional(),
-  disabled: z.boolean().default(false),
-});
+const tokenSchema = z
+  .object({
+    profiles: z.array(z.string().min(1)).min(1, "profiles must contain at least one entry").optional(),
+    profile: z.string().min(1).optional(),
+    description: z.string().optional(),
+    disabled: z.boolean().default(false),
+  })
+  .refine((token) => token.profiles !== undefined || token.profile !== undefined, {
+    message: "profiles is required",
+  })
+  .refine((token) => !(token.profiles !== undefined && token.profile !== undefined), {
+    message: "use profiles or legacy profile, not both",
+  });
 
 // --- Security schema ---
 
@@ -74,7 +89,7 @@ const trafficLogSchema = z.object({
   maxBytes: z.number().int().min(65536).max(52428800).default(5242880),
 });
 
-const secretStoreSchema = z.object({
+const secretBackendSchema = z.object({
   backend: z.enum(["file", "keychain"]).default("file"),
   keychainService: z.literal("omni-mcp").default("omni-mcp"),
 });
@@ -104,7 +119,7 @@ export const configSchema = z.object({
     retentionDays: 7,
     maxBytes: 5242880,
   }),
-  secretStore: secretStoreSchema.default({
+  secretBackend: secretBackendSchema.default({
     backend: "file",
     keychainService: "omni-mcp",
   }),
@@ -119,5 +134,5 @@ export type ProfileConfig = z.infer<typeof profileSchema>;
 export type TokenConfig = z.infer<typeof tokenSchema>;
 export type SecurityConfig = z.infer<typeof securitySchema>;
 export type TrafficLogConfig = z.infer<typeof trafficLogSchema>;
-export type SecretStoreConfig = z.infer<typeof secretStoreSchema>;
+export type SecretBackendConfig = z.infer<typeof secretBackendSchema>;
 export type OmniMcpConfig = z.infer<typeof configSchema>;

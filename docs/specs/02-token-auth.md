@@ -1,8 +1,10 @@
-# omni-mcp — Token & Authentication Spec
+# omni-mcp — Omni Token & Authentication Spec
 
 ## Overview
 
-omni-mcp uses a token-based access control model. Each connecting client presents a token, which is resolved to a profile. The profile determines which upstream MCP servers and tools are visible to that client.
+omni-mcp uses an Omni Token access-control model. Each connecting client presents an Omni Token
+name, which resolves to one or more profiles. Their grants are combined with maximum privilege;
+global tool disables always win.
 
 This enables:
 - **Simple default usage**: a single `default` token controls all agents.
@@ -48,7 +50,8 @@ Tokens are defined in the `tokens` block of `omni-mcp.config.json`:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `profile` | Yes | Name of the profile to activate when this token is presented. Must exist in the `profiles` block. |
+| `profiles` | Yes | Non-empty profile-name array. Server/tool grants are unioned. |
+| `profile` | Legacy | Accepted as a single-profile compatibility input and normalized to `profiles`. |
 | `description` | No | Human-readable label shown in `omni-mcp status` output. |
 | `disabled` | No | If `true`, the token is rejected (treated as unauthorized). Default: `false`. |
 
@@ -64,11 +67,19 @@ Authorization: ******
 
 The token value is the **key name** from the `tokens` block (e.g., `cursor`, `claude`, `default`), not a secret.
 
-> **Security note**: Token values are short-lived identifiers used for routing and profile selection. For Phase 1, they act as shared secrets for local developer machines. All communication is on localhost. Cryptographic signing is a Phase 2 consideration.
+> **Naming note**: Omni Tokens route clients to profiles. They are distinct from managed Secrets
+> referenced as `$NAME`. The config block remains `tokens` for compatibility.
+
+Detailed multi-profile union and per-tool semantics:
+[13-tool-policies-and-omni-tokens.md](./13-tool-policies-and-omni-tokens.md).
 
 ---
 
 ## Profile Resolution Order
+
+For canonical `profiles`, every listed profile resolves at the same precedence level and the
+gateway computes their union. References to singular `profile` below describe the legacy
+single-profile form.
 
 When a request arrives, the active profile is resolved using this precedence (highest to lowest):
 

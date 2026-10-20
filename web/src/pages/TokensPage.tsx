@@ -16,28 +16,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
 export default function TokensPage() {
   const { config, setConfig, error, loading } = useConfig();
   const [formError, setFormError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [profile, setProfile] = useState("default");
+  const [profiles, setProfiles] = useState<string[]>(["default"]);
   const [description, setDescription] = useState("");
   const [disabled, setDisabled] = useState(false);
 
   const openCreate = () => {
     setEditing(null);
     setName("");
-    setProfile(config?.defaultProfile ?? "default");
+    setProfiles([config?.defaultProfile ?? "default"]);
     setDescription("");
     setDisabled(false);
     setFormError(null);
@@ -49,7 +41,7 @@ export default function TokensPage() {
     if (!token) return;
     setEditing(tokenName);
     setName(tokenName);
-    setProfile(token.profile);
+    setProfiles(token.profiles ?? (token.profile ? [token.profile] : []));
     setDescription(token.description ?? "");
     setDisabled(Boolean(token.disabled));
     setFormError(null);
@@ -59,12 +51,16 @@ export default function TokensPage() {
   const save = async () => {
     const tokenName = name.trim();
     if (!tokenName) {
-      setFormError("Token name is required (this is the secret clients send).");
+      setFormError("Token name is required.");
+      return;
+    }
+    if (profiles.length === 0) {
+      setFormError("Select at least one profile.");
       return;
     }
     try {
       const result = await putToken(tokenName, {
-        profile,
+        profiles,
         description: description.trim() || undefined,
         disabled,
       });
@@ -76,7 +72,7 @@ export default function TokensPage() {
   };
 
   const remove = async (tokenName: string) => {
-    if (!window.confirm(`Delete token "${tokenName}"?`)) return;
+    if (!window.confirm(`Delete Token "${tokenName}"?`)) return;
     try {
       const result = await deleteToken(tokenName);
       setConfig(result.config);
@@ -95,13 +91,13 @@ export default function TokensPage() {
           <div>
             <h2 className="text-3xl font-bold text-foreground">Tokens</h2>
             <p className="text-muted-foreground">
-              Token names are the secrets IDEs send. They are listed here as names only.
+              Route IDE clients through one or more profiles. Managed Secrets are configured separately.
             </p>
           </div>
         </div>
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4" />
-          Add token
+          Add Token
         </Button>
       </div>
 
@@ -123,7 +119,9 @@ export default function TokensPage() {
                     {tokenName}
                     {token.disabled ? <Badge variant="destructive">disabled</Badge> : null}
                   </CardTitle>
-                  <CardDescription>{token.description || `Profile: ${token.profile}`}</CardDescription>
+                  <CardDescription>
+                    {token.description || `Profiles: ${(token.profiles ?? (token.profile ? [token.profile] : [])).join(", ")}`}
+                  </CardDescription>
                 </div>
                 {tokenName !== "default" ? (
                   <Button
@@ -136,8 +134,12 @@ export default function TokensPage() {
                   </Button>
                 ) : null}
               </CardHeader>
-              <CardContent className="flex items-center justify-between">
-                <Badge variant="secondary">{token.profile}</Badge>
+              <CardContent className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-1">
+                  {(token.profiles ?? (token.profile ? [token.profile] : [])).map((profile) => (
+                    <Badge key={profile} variant="secondary">{profile}</Badge>
+                  ))}
+                </div>
                 <Button variant="outline" size="sm" onClick={() => openEdit(tokenName)}>
                   Edit
                 </Button>
@@ -150,11 +152,11 @@ export default function TokensPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? `Edit ${editing}` : "Add token"}</DialogTitle>
+            <DialogTitle>{editing ? `Edit ${editing}` : "Add Token"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-2">
             <div className="grid gap-1">
-              <Label htmlFor="token-name">Token name (secret)</Label>
+              <Label htmlFor="token-name">Token name</Label>
               <Input
                 id="token-name"
                 value={name}
@@ -163,21 +165,26 @@ export default function TokensPage() {
               />
             </div>
             <div className="grid gap-1">
-              <Label>Profile</Label>
-              <Select value={profile} onValueChange={setProfile}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {config
-                    ? Object.keys(config.profiles).map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))
-                    : null}
-                </SelectContent>
-              </Select>
+              <Label>Profiles (maximum privileges are combined)</Label>
+              <div className="grid gap-2 rounded-md border p-3">
+                {config
+                  ? Object.keys(config.profiles).map((profile) => (
+                      <div key={profile} className="flex items-center justify-between gap-3">
+                        <span className="text-sm">{profile}</span>
+                        <Switch
+                          checked={profiles.includes(profile)}
+                          onCheckedChange={(checked) =>
+                            setProfiles((current) =>
+                              checked
+                                ? [...new Set([...current, profile])]
+                                : current.filter((name) => name !== profile),
+                            )
+                          }
+                        />
+                      </div>
+                    ))
+                  : null}
+              </div>
             </div>
             <div className="grid gap-1">
               <Label htmlFor="desc">Description</Label>

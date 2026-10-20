@@ -14,6 +14,8 @@ This is separate from the daemon stderr file (`~/.omni-mcp/omni-mcp.log`) used b
 ### Behavior
 - On every MCP `tools/call` or managed CLI tool call that the gateway attempts to route (including profile denials, CLI enablement denials, unknown servers/tools, and upstream failures), append one traffic record **after** the call completes or fails.
 - Each record stores: UTC timestamp, source (`mcp` | `cli`), token name, profile name, upstream server key, un-namespaced tool name, namespaced tool name (`server__tool`), duration in milliseconds, and outcome (`ok` | `error`). CLI records use empty token/profile values because CLI access is independent of profiles. Optional: MCP error `code` only (integer). No argument objects, no result payloads, no upstream stdout, no error `message`/`data` strings (those can contain secrets or argument echoes).
+- When an Omni Token assigns multiple profiles, `profile` is their lexicographically sorted names
+  joined with `+` (for example `admin+safe`).
 - Do **not** log `tools/list`, `initialize`, or other MCP methods. Those are noisy and are not “which tool was called.”
 - The web UI at `/logs` lists records and can filter by source, token, profile, server, and date range.
 - A **Grouped** mode shows counts for the same filters, grouped by a chosen dimension (default: tool).
@@ -89,7 +91,7 @@ All three routes: **loopback-only**. Non-loopback → `403` `{ "error": "Writes 
   | `to` | ISO-8601 UTC | now | Inclusive |
   | `source` | `mcp` \| `cli` | omitted | Exact invocation source |
   | `token` | string | omitted | Exact token name |
-  | `profile` | string | omitted | Exact profile name |
+  | `profile` | string | omitted | Assigned profile name; also matches that member in a composite Omni Token label |
   | `server` | string | omitted | Exact server key |
   | `tool` | string | omitted | Exact un-namespaced tool name |
   | `offset` | int ≥ 0 | `0` | |

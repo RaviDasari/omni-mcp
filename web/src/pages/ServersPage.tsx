@@ -1,9 +1,18 @@
 import { useState } from "react";
-import { Cable, Copy, LayoutGrid, List, Plus, Trash2, Wrench } from "lucide-react";
+import { Cable, Copy, LayoutGrid, List, Plus, Trash2, Wand2, Wrench } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useConfig } from "@/hooks/useConfig";
-import { deleteServer, putServer, setServerEnabled } from "@/lib/api";
-import type { HttpServerConfig, ServerConfig, StdioServerConfig } from "@/lib/types";
+import {
+  applyProfileTools,
+  deleteServer,
+  fetchServerTools,
+  putProfile,
+  putServer,
+  setProfileToolEnabled,
+  setServerEnabled,
+  setServerToolEnabled,
+} from "@/lib/api";
+import type { HttpServerConfig, McpTool, ServerConfig, StdioServerConfig } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +47,7 @@ interface ServerForm {
   authToken: string;
   enabled: boolean;
   cliEnabled: boolean;
+  disabledTools: string[];
 }
 
 const emptyForm: ServerForm = {
@@ -50,6 +60,7 @@ const emptyForm: ServerForm = {
   authToken: "",
   enabled: true,
   cliEnabled: false,
+  disabledTools: [],
 };
 
 function parseEnv(text: string): Record<string, string> | undefined {
@@ -83,6 +94,7 @@ function serverToForm(name: string, server: ServerConfig): ServerForm {
       authToken: "",
       enabled: server.enabled !== false,
       cliEnabled: server.cli?.enabled === true,
+      disabledTools: server.disabledTools ?? [],
     };
   }
 
@@ -96,6 +108,7 @@ function serverToForm(name: string, server: ServerConfig): ServerForm {
     authToken: server.auth?.token ?? "",
     enabled: server.enabled !== false,
     cliEnabled: server.cli?.enabled === true,
+    disabledTools: server.disabledTools ?? [],
   };
 }
 
@@ -105,6 +118,7 @@ function toServerConfig(form: ServerForm): ServerConfig {
       type: "http",
       enabled: form.enabled,
       cli: { enabled: form.cliEnabled },
+      disabledTools: form.disabledTools,
       url: form.url,
     };
     if (form.authToken) {
@@ -116,11 +130,43 @@ function toServerConfig(form: ServerForm): ServerConfig {
     type: "stdio",
     enabled: form.enabled,
     cli: { enabled: form.cliEnabled },
+    disabledTools: form.disabledTools,
     command: form.command,
     args: form.args.split(/\s+/).filter(Boolean),
   };
   const env = parseEnv(form.env);
   if (env) server.env = env;
+  return server;
+}
+
+// Docs for other clients wrap a server in {"mcpServers": {"name": {...}}} (or
+// "servers" for VS Code), so accept that shape on paste and keep the name.
+function unwrapServerEntry(parsed: unknown): { name?: string; server: Record<string, unknown> } {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Server JSON must be an object");
+  }
+  const record = parsed as Record<string, unknown>;
+  const wrapper = record.mcpServers ?? record.servers;
+  if (!wrapper || typeof wrapper !== "object" || Array.isArray(wrapper)) {
+    return { server: record };
+  }
+  const entries = Object.entries(wrapper as Record<string, unknown>);
+  if (entries.length !== 1) {
+    throw new Error("Paste a single server entry");
+  }
+  const [name, server] = entries[0];
+  if (!server || typeof server !== "object" || Array.isArray(server)) {
+    throw new Error(`Server "${name}" must be an object`);
+  }
+  return { name, server: server as Record<string, unknown> };
+}
+
+// Snippets copied from other clients usually omit our discriminator.
+function withInferredType(server: Record<string, unknown>): Record<string, unknown> {
+  if (server.type === "stdio" || server.type === "http") return server;
+  const { type: _discarded, ...rest } = server;
+  if (typeof rest.url === "string") return { type: "http", ...rest };
+  if (typeof rest.command === "string") return { type: "stdio", ...rest };
   return server;
 }
 
@@ -134,6 +180,13 @@ export default function ServersPage() {
   const [editorMode, setEditorMode] = useState<"ui" | "json">("ui");
   const [jsonValue, setJsonValue] = useState("");
   const [viewMode, setViewMode] = useState<"tiles" | "list">("tiles");
+  const [toolsServer, setToolsServer] = useState<string | null>(null);
+  const [tools, setTools] = useState<McpTool[]>([]);
+  const [toolsLoading, setToolsLoading] = useState(false);
+  const [toolsQuery, setToolsQuery] = useState("");
+  const [toolsProfile, setToolsProfile] = useState("default");
+  const [newProfileName, setNewProfileName] = useState("");
+  const [applyTargets, setApplyTargets] = useState<string[]>([]);
 
   const openCreate = () => {
     setEditing(null);
@@ -177,11 +230,8 @@ export default function ServersPage() {
     try {
       let server: ServerConfig;
       if (editorMode === "json") {
-        const parsed = JSON.parse(jsonValue) as unknown;
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-          throw new Error("Server JSON must be an object");
-        }
-        server = parsed as ServerConfig;
+        const { server: unwrapped } = unwrapServerEntry(JSON.parse(jsonValue));
+        server = withInferredType(unwrapped) as unknown as ServerConfig;
       } else {
         server = toServerConfig(form);
       }
@@ -210,16 +260,35 @@ export default function ServersPage() {
     }
 
     try {
-      const parsed = JSON.parse(jsonValue) as ServerConfig;
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        throw new Error("Server JSON must be an object");
-      }
+      const { name, server } = unwrapServerEntry(JSON.parse(jsonValue));
+      const parsed = withInferredType(server) as unknown as ServerConfig;
       if (parsed.type !== "stdio" && parsed.type !== "http") {
         throw new Error('Server type must be "stdio" or "http"');
       }
-      setForm(serverToForm(form.name, parsed));
+      setForm(serverToForm(form.name || (name ?? ""), parsed));
       setFormError(null);
       setEditorMode("ui");
+    } catch (err) {
+      setFormError(
+        err instanceof SyntaxError
+          ? `Invalid JSON: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : "Invalid server JSON",
+      );
+    }
+  };
+
+  // Pretty-prints, and unwraps a pasted {"mcpServers": {...}} block so the
+  // editor always holds the single server object the API expects.
+  const formatJson = () => {
+    try {
+      const { name, server } = unwrapServerEntry(JSON.parse(jsonValue));
+      setJsonValue(JSON.stringify(withInferredType(server), null, 2));
+      if (name && !form.name.trim() && !editing) {
+        setForm((current) => ({ ...current, name }));
+      }
+      setFormError(null);
     } catch (err) {
       setFormError(
         err instanceof SyntaxError
@@ -251,6 +320,93 @@ export default function ServersPage() {
       setFormError(err instanceof Error ? err.message : "Failed to update server");
     } finally {
       setToggling(null);
+    }
+  };
+
+  const openTools = async (name: string) => {
+    setToolsServer(name);
+    setTools([]);
+    setToolsQuery("");
+    setToolsProfile(config?.defaultProfile ?? "default");
+    setNewProfileName("");
+    setApplyTargets([]);
+    setToolsLoading(true);
+    setFormError(null);
+    try {
+      const result = await fetchServerTools(name);
+      setTools(result.tools);
+    } catch (err) {
+      const configuredNames = new Set([
+        ...(config?.servers[name]?.disabledTools ?? []),
+        ...Object.values(config?.profiles ?? {}).flatMap(
+          (profile) => profile.denyTools?.[name] ?? [],
+        ),
+      ]);
+      setTools([...configuredNames].map((toolName) => ({
+        name: toolName,
+        enabled: !(config?.servers[name]?.disabledTools ?? []).includes(toolName),
+      })));
+      setFormError(err instanceof Error ? err.message : "Failed to list tools");
+    } finally {
+      setToolsLoading(false);
+    }
+  };
+
+  const toggleGlobalTool = async (toolName: string, enabled: boolean) => {
+    if (!toolsServer) return;
+    try {
+      const result = await setServerToolEnabled(toolsServer, toolName, enabled);
+      setConfig(result.config);
+      setTools((current) =>
+        current.map((tool) => tool.name === toolName ? { ...tool, enabled } : tool),
+      );
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to update tool");
+    }
+  };
+
+  const toggleProfileTool = async (toolName: string, enabled: boolean) => {
+    if (!toolsServer) return;
+    try {
+      const result = await setProfileToolEnabled(toolsProfile, toolsServer, toolName, enabled);
+      setConfig(result.config);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to update profile tool");
+    }
+  };
+
+  const saveToolsAsProfile = async () => {
+    if (!config || !toolsServer || !newProfileName.trim()) return;
+    const source = config.profiles[toolsProfile];
+    const allow = source
+      ? source.allow.includes("*") || source.allow.includes(toolsServer)
+        ? [...source.allow]
+        : [...source.allow, toolsServer]
+      : [toolsServer];
+    try {
+      const result = await putProfile(newProfileName.trim(), {
+        allow,
+        denyTools: structuredClone(source?.denyTools ?? {}),
+      });
+      setConfig(result.config);
+      setToolsProfile(newProfileName.trim());
+      setNewProfileName("");
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to create profile");
+    }
+  };
+
+  const applyToolsToProfiles = async () => {
+    if (!toolsServer || applyTargets.length === 0) return;
+    try {
+      const result = await applyProfileTools(toolsProfile, toolsServer, applyTargets);
+      setConfig(result.config);
+      setApplyTargets([]);
+      if (result.skipped.length > 0) {
+        setFormError(`Skipped profiles that do not allow ${toolsServer}: ${result.skipped.join(", ")}`);
+      }
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to apply tool policy");
     }
   };
 
@@ -320,6 +476,9 @@ export default function ServersPage() {
                     {name}
                     <Badge variant="secondary">{server.type}</Badge>
                     {server.enabled === false ? <Badge variant="outline">disabled</Badge> : null}
+                    {(server.disabledTools?.length ?? 0) > 0 ? (
+                      <Badge variant="destructive">{server.disabledTools!.length} tools off</Badge>
+                    ) : null}
                   </CardTitle>
                   <CardDescription className="mt-1 break-all">
                     {server.type === "stdio"
@@ -363,6 +522,10 @@ export default function ServersPage() {
                       Test
                     </Link>
                   </Button>
+                  <Button variant="outline" size="sm" onClick={() => void openTools(name)}>
+                    <Wrench className="h-4 w-4" />
+                    Tools
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => openClone(name, server)}>
                     <Copy className="h-4 w-4" />
                     Clone
@@ -381,6 +544,137 @@ export default function ServersPage() {
           ))}
         </div>
       )}
+
+      <Dialog open={Boolean(toolsServer)} onOpenChange={(next) => !next && setToolsServer(null)}>
+        <DialogContent className="max-h-[90vh] w-[95vw] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Tool access — {toolsServer}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Global switches affect MCP, Playground, and CLI. Profile switches affect MCP clients
+            unless another profile on the Token grants the tool.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1">
+              <Label htmlFor="tool-search">Search tools</Label>
+              <Input
+                id="tool-search"
+                value={toolsQuery}
+                onChange={(event) => setToolsQuery(event.target.value)}
+                placeholder="Tool name or description"
+              />
+            </div>
+            <div className="grid gap-1">
+              <Label>Profile policy</Label>
+              <Select value={toolsProfile} onValueChange={setToolsProfile}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {config ? Object.keys(config.profiles).map((name) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  )) : null}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-2 rounded-md border p-3">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-4 text-xs font-medium text-muted-foreground">
+              <span>Tool</span>
+              <span>Global</span>
+              <span>{toolsProfile}</span>
+            </div>
+            {toolsLoading ? <p className="text-sm text-muted-foreground">Loading tools…</p> : null}
+            {!toolsLoading && tools.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Enable and connect the server to list tools. Configured disabled names remain in
+                the server and profile JSON.
+              </p>
+            ) : null}
+            {tools
+              .filter((tool) => {
+                const query = toolsQuery.trim().toLowerCase();
+                return !query ||
+                  tool.name.toLowerCase().includes(query) ||
+                  tool.description?.toLowerCase().includes(query);
+              })
+              .map((tool) => {
+                const profileDenied = Boolean(
+                  config?.profiles[toolsProfile]?.denyTools?.[toolsServer ?? ""]?.includes(tool.name),
+                );
+                return (
+                  <div key={tool.name} className="grid grid-cols-[1fr_auto_auto] items-center gap-4 border-t pt-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{tool.name}</p>
+                      {tool.description ? (
+                        <p className="line-clamp-1 text-xs text-muted-foreground">{tool.description}</p>
+                      ) : null}
+                    </div>
+                    <Switch
+                      checked={tool.enabled !== false}
+                      onCheckedChange={(enabled) => void toggleGlobalTool(tool.name, enabled)}
+                      aria-label={`Globally ${tool.enabled === false ? "enable" : "disable"} ${tool.name}`}
+                    />
+                    <Switch
+                      checked={!profileDenied}
+                      onCheckedChange={(enabled) => void toggleProfileTool(tool.name, enabled)}
+                      aria-label={`${profileDenied ? "Enable" : "Disable"} ${tool.name} for ${toolsProfile}`}
+                    />
+                  </div>
+                );
+              })}
+          </div>
+          <div className="grid gap-3 rounded-md border p-3 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="new-profile">Save policy as new profile</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="new-profile"
+                  value={newProfileName}
+                  onChange={(event) => setNewProfileName(event.target.value)}
+                  placeholder="profile-name"
+                />
+                <Button
+                  variant="outline"
+                  disabled={!newProfileName.trim()}
+                  onClick={() => void saveToolsAsProfile()}
+                >
+                  Save
+                </Button>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Apply this server policy to profiles</Label>
+              <div className="flex flex-wrap gap-2">
+                {config ? Object.keys(config.profiles)
+                  .filter((name) => name !== toolsProfile)
+                  .map((name) => (
+                    <Button
+                      key={name}
+                      type="button"
+                      size="sm"
+                      variant={applyTargets.includes(name) ? "default" : "outline"}
+                      onClick={() =>
+                        setApplyTargets((current) =>
+                          current.includes(name)
+                            ? current.filter((item) => item !== name)
+                            : [...current, name],
+                        )
+                      }
+                    >
+                      {name}
+                    </Button>
+                  )) : null}
+              </div>
+              <Button
+                variant="outline"
+                disabled={applyTargets.length === 0}
+                onClick={() => void applyToolsToProfiles()}
+              >
+                Apply
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
@@ -408,23 +702,31 @@ export default function ServersPage() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
             </div>
-            <div className="flex rounded-md border p-1 w-fit">
-              <Button
-                type="button"
-                size="sm"
-                variant={editorMode === "ui" ? "secondary" : "ghost"}
-                onClick={() => changeEditorMode("ui")}
-              >
-                Form
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={editorMode === "json" ? "secondary" : "ghost"}
-                onClick={() => changeEditorMode("json")}
-              >
-                JSON
-              </Button>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex rounded-md border p-1 w-fit">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={editorMode === "ui" ? "secondary" : "ghost"}
+                  onClick={() => changeEditorMode("ui")}
+                >
+                  Form
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={editorMode === "json" ? "secondary" : "ghost"}
+                  onClick={() => changeEditorMode("json")}
+                >
+                  JSON
+                </Button>
+              </div>
+              {editorMode === "json" ? (
+                <Button type="button" size="sm" variant="outline" onClick={formatJson}>
+                  <Wand2 className="h-4 w-4" />
+                  Format
+                </Button>
+              ) : null}
             </div>
 
             {editorMode === "json" ? (
@@ -434,11 +736,12 @@ export default function ServersPage() {
                   id="server-json"
                   value={jsonValue}
                   onValueChange={setJsonValue}
-                  minRows={18}
-                  containerClassName="max-h-[55vh]"
+                  minRows={26}
+                  containerClassName="min-h-[50vh] max-h-[65vh] resize-y"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Enter one server object. The server name is set separately above.
+                  Enter one server object. A pasted <code>mcpServers</code> block is unwrapped on
+                  Format or Save. The server name is set separately above.
                 </p>
               </div>
             ) : (

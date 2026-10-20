@@ -7,7 +7,7 @@ import type {
   ServerConfig,
   ServerToolCallResponse,
   ServerToolsResponse,
-  SecretsResponse,
+  VariablesResponse,
   TokenConfig,
   TrafficLogGroupBy,
   TrafficLogListResponse,
@@ -88,6 +88,17 @@ export function fetchServerTools(name: string): Promise<ServerToolsResponse> {
   return request(`/api/servers/${encodeURIComponent(name)}/tools`);
 }
 
+export function setServerToolEnabled(
+  server: string,
+  tool: string,
+  enabled: boolean,
+): Promise<{ config: OmniMcpConfig }> {
+  return request(
+    `/api/servers/${encodeURIComponent(server)}/tools/${encodeURIComponent(tool)}/enabled`,
+    { method: "PUT", body: JSON.stringify({ enabled }) },
+  );
+}
+
 export function callServerTool(
   server: string,
   tool: string,
@@ -110,6 +121,29 @@ export function deleteProfile(name: string): Promise<{ config: OmniMcpConfig }> 
   return request(`/api/profiles/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
 
+export function setProfileToolEnabled(
+  profile: string,
+  server: string,
+  tool: string,
+  enabled: boolean,
+): Promise<{ config: OmniMcpConfig }> {
+  return request(
+    `/api/profiles/${encodeURIComponent(profile)}/servers/${encodeURIComponent(server)}/tools/${encodeURIComponent(tool)}/enabled`,
+    { method: "PUT", body: JSON.stringify({ enabled }) },
+  );
+}
+
+export function applyProfileTools(
+  source: string,
+  server: string,
+  targets: string[],
+): Promise<{ config: OmniMcpConfig; applied: string[]; skipped: string[] }> {
+  return request(`/api/profiles/${encodeURIComponent(source)}/apply-deny-tools`, {
+    method: "POST",
+    body: JSON.stringify({ server, targets }),
+  });
+}
+
 export function putToken(name: string, token: TokenConfig): Promise<{ config: OmniMcpConfig }> {
   return request(`/api/tokens/${encodeURIComponent(name)}`, {
     method: "PUT",
@@ -125,29 +159,43 @@ export function postReload(): Promise<{ config: OmniMcpConfig; warnings: string[
   return request("/api/reload", { method: "POST" });
 }
 
-export function fetchSecrets(): Promise<SecretsResponse> {
-  return request("/api/secrets");
+export function fetchVariables(): Promise<VariablesResponse> {
+  return request("/api/variables");
 }
 
-export function putSecret(name: string, value: string): Promise<SecretsResponse & { ok: true }> {
-  return request(`/api/secrets/${encodeURIComponent(name)}`, {
+export function putVariable(
+  name: string,
+  value: string,
+  type: "secret" | "plain",
+): Promise<VariablesResponse & { ok: true }> {
+  return request(`/api/variables/${encodeURIComponent(name)}`, {
     method: "PUT",
-    body: JSON.stringify({ value }),
+    body: JSON.stringify({ value, type }),
   });
 }
 
-export function deleteSecret(name: string): Promise<SecretsResponse & { ok: true; deleted: true }> {
-  return request(`/api/secrets/${encodeURIComponent(name)}`, { method: "DELETE" });
+export function convertVariable(
+  name: string,
+  type: "secret" | "plain",
+): Promise<VariablesResponse & { ok: true }> {
+  return request(`/api/variables/${encodeURIComponent(name)}/type`, {
+    method: "PUT",
+    body: JSON.stringify({ type }),
+  });
 }
 
-export function syncSecrets(): Promise<SecretsResponse & { ok: true }> {
-  return request("/api/secrets/sync", { method: "POST" });
+export function deleteVariable(name: string): Promise<VariablesResponse & { ok: true; deleted: true }> {
+  return request(`/api/variables/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+export function syncVariables(): Promise<VariablesResponse & { ok: true }> {
+  return request("/api/variables/sync", { method: "POST" });
 }
 
 export function migrateSecretBackend(
   backend: "file" | "keychain",
-): Promise<SecretsResponse & { ok: true; migrated: number }> {
-  return request("/api/secrets/backend", {
+): Promise<VariablesResponse & { ok: true; migrated: number }> {
+  return request("/api/variables/secret-backend", {
     method: "POST",
     body: JSON.stringify({ backend }),
   });
@@ -156,15 +204,15 @@ export function migrateSecretBackend(
 export function previewSecretBackendMigration(
   backend: "file" | "keychain",
 ): Promise<{ from: "file" | "keychain"; to: "file" | "keychain"; count: number; keychainSupported: boolean }> {
-  return request(`/api/secrets/backend?backend=${backend}`);
+  return request(`/api/variables/secret-backend?backend=${backend}`);
 }
 
 export function importKeychainSecret(
   name: string,
   service: string,
   account: string,
-): Promise<SecretsResponse & { ok: true }> {
-  return request("/api/secrets/import-keychain", {
+): Promise<VariablesResponse & { ok: true }> {
+  return request("/api/variables/import-keychain", {
     method: "POST",
     body: JSON.stringify({ name, service, account }),
   });
@@ -178,13 +226,13 @@ export interface InlineSecretCandidate {
 }
 
 export function fetchInlineSecretMigration(): Promise<{ candidates: InlineSecretCandidate[]; conflicts: string[] }> {
-  return request("/api/secrets/migrate-inline");
+  return request("/api/variables/migrate-inline");
 }
 
 export function applyInlineSecretMigration(
   renames: Record<string, string> = {},
-): Promise<SecretsResponse & { ok: true; migrated: number }> {
-  return request("/api/secrets/migrate-inline", {
+): Promise<VariablesResponse & { ok: true; migrated: number }> {
+  return request("/api/variables/migrate-inline", {
     method: "POST",
     body: JSON.stringify({ renames }),
   });

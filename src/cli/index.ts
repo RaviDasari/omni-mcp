@@ -13,7 +13,7 @@ import { ideSnippetsCommand } from "./commands/ide-snippets.js";
 import { initCommand } from "./commands/init.js";
 import { DEFAULT_CONFIG_PATH } from "./config-path.js";
 import { runManagedCli } from "./managed-cli.js";
-import { registerSecretsCommand } from "./commands/secrets.js";
+import { registerVariablesCommand } from "./commands/variables.js";
 import { registerManagementCommands } from "./commands/management.js";
 import { VERSION } from "../version.js";
 
@@ -111,7 +111,7 @@ program
   .option("--template <name>", "Start from template: minimal, multi-agent, team")
   .action(initCommand);
 
-registerSecretsCommand(program);
+registerVariablesCommand(program);
 registerManagementCommands(program);
 
 program

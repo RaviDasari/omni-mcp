@@ -46,13 +46,23 @@ export function collectCrossFieldIssues(
         });
       }
     }
+    for (const serverName of Object.keys(profile.denyTools ?? {})) {
+      if (!(serverName in config.servers)) {
+        errors.push({
+          message: `profiles.${profileName}.denyTools: unknown server "${serverName}"`,
+        });
+      }
+    }
   }
 
   for (const [tokenName, token] of Object.entries(config.tokens)) {
-    if (!(token.profile in config.profiles)) {
-      errors.push({
-        message: `tokens.${tokenName}.profile: unknown profile "${token.profile}"`,
-      });
+    const profiles = token.profiles ?? (token.profile ? [token.profile] : []);
+    for (const profileName of profiles) {
+      if (!(profileName in config.profiles)) {
+        errors.push({
+          message: `tokens.${tokenName}.profiles: unknown profile "${profileName}"`,
+        });
+      }
     }
   }
 
@@ -62,7 +72,11 @@ export function collectCrossFieldIssues(
     });
   }
 
-  const usedProfiles = new Set(Object.values(config.tokens).map((t) => t.profile));
+  const usedProfiles = new Set(
+    Object.values(config.tokens).flatMap((token) =>
+      token.profiles ?? (token.profile ? [token.profile] : []),
+    ),
+  );
   usedProfiles.add(config.defaultProfile);
   for (const profileName of Object.keys(config.profiles)) {
     if (!usedProfiles.has(profileName)) {

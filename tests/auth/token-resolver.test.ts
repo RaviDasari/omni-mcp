@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   resolveToken,
   isServerAllowed,
+  isToolAllowed,
   getAllowedServers,
 } from "../../src/auth/token-resolver.js";
 import type { OmniMcpConfig } from "../../src/config/schema.js";
@@ -118,6 +119,27 @@ describe("Token Resolution", () => {
 
       expect(result.status).toBe("authenticated");
       expect(result.profile).toBe("admin");
+    });
+
+    it("combines multiple profiles with maximum privileges", () => {
+      const config = makeConfig({
+        profiles: {
+          default: { allow: ["filesystem"] },
+          safe: { allow: ["filesystem"], denyTools: { filesystem: ["write_file"] } },
+          writer: { allow: ["filesystem"] },
+        },
+        tokens: {
+          default: { profiles: ["safe"], disabled: false },
+          combined: { profiles: ["safe", "writer"], disabled: false },
+        },
+      });
+
+      const safe = resolveToken(bearerHeader("default"), config);
+      expect(isToolAllowed("filesystem", "write_file", safe.profileConfig)).toBe(false);
+
+      const combined = resolveToken(bearerHeader("combined"), config);
+      expect(combined.profile).toBe("safe+writer");
+      expect(isToolAllowed("filesystem", "write_file", combined.profileConfig)).toBe(true);
     });
   });
 

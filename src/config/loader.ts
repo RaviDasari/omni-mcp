@@ -5,6 +5,7 @@ import { resolveEnvVariables } from "./env.js";
 import { DEFAULT_CONFIG_PATH } from "../cli/config-path.js";
 import { collectCrossFieldIssues } from "./validate.js";
 import { createSecretStore, type SecretStoreOptions } from "./secret-store.js";
+import { VariableStore, type VariableStoreOptions } from "./variable-store.js";
 
 export interface ValidationError {
   message: string;
@@ -21,7 +22,7 @@ export interface LoadConfigResult {
   warnings: ValidationWarning[];
 }
 
-export interface ResolveConfigOptions extends SecretStoreOptions {
+export interface ResolveConfigOptions extends SecretStoreOptions, VariableStoreOptions {
   env?: Record<string, string | undefined>;
 }
 
@@ -63,19 +64,20 @@ export function resolveConfig(
 ): LoadConfigResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
-  const storeConfigResult = configSchema.shape.secretStore.safeParse(rawConfig.secretStore);
+  const storeConfigResult = configSchema.shape.secretBackend.safeParse(rawConfig.secretBackend);
   const storeConfig = storeConfigResult.success
     ? storeConfigResult.data
     : { backend: "file" as const, keychainService: "omni-mcp" as const };
 
   let resolved: Record<string, unknown>;
   try {
-    const store = createSecretStore(storeConfig, options);
-    const result = resolveEnvVariables(rawConfig, options.env ?? process.env, store);
+    const secretStore = createSecretStore(storeConfig, options);
+    const variables = new VariableStore(secretStore, options);
+    const result = resolveEnvVariables(rawConfig, options.env ?? process.env, variables);
     resolved = result.resolved;
     const disabled = disabledServerPrefixes(rawConfig);
     for (const envErr of result.errors) {
-      const message = `${envErr.path}: neither the process environment nor the active secret store defines "${envErr.variable}"`;
+      const message = `${envErr.path}: neither the process environment nor managed Variables define "${envErr.variable}"`;
       if (disabled.some((prefix) => envErr.path.startsWith(prefix))) {
         warnings.push({ message: `${message} — server is disabled` });
       } else {

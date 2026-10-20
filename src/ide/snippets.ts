@@ -2,6 +2,7 @@ export interface IdeSnippet {
   id: string;
   title: string;
   pathHint: string;
+  altPaths?: string[];
   json: string;
 }
 
@@ -46,6 +47,17 @@ export function buildIdeSnippets(options: {
     },
   };
 
+  // Claude Desktop only launches stdio commands from its config file, so the
+  // HTTP gateway is reached through the mcp-remote bridge.
+  const claudeDesktop = {
+    mcpServers: {
+      "omni-mcp": {
+        command: "npx",
+        args: ["-y", "mcp-remote", url, "--header", `Authorization: ${bearer}`],
+      },
+    },
+  };
+
   return {
     url,
     token,
@@ -63,15 +75,25 @@ export function buildIdeSnippets(options: {
         json: JSON.stringify(vscode, null, 2),
       },
       {
-        id: "claude",
-        title: "Claude Desktop",
-        pathHint: "Claude Desktop config",
+        id: "claude-code",
+        title: "Claude Code",
+        pathHint: "~/.claude.json",
         json: JSON.stringify(cursor, null, 2),
+      },
+      {
+        id: "claude-desktop",
+        title: "Claude Desktop",
+        pathHint: "~/Library/Application Support/Claude/claude_desktop_config.json",
+        altPaths: [
+          "%APPDATA%\\Claude\\claude_desktop_config.json (Windows)",
+          "~/.config/Claude/claude_desktop_config.json (Linux)",
+        ],
+        json: JSON.stringify(claudeDesktop, null, 2),
       },
       {
         id: "windsurf",
         title: "Windsurf",
-        pathHint: "~/.windsurf/mcp.json",
+        pathHint: "~/.codeium/windsurf/mcp_config.json",
         json: JSON.stringify(cursor, null, 2),
       },
     ],

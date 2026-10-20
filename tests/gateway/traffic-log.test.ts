@@ -68,6 +68,20 @@ describe("TrafficLog", () => {
     expect(raw).not.toContain("message");
   });
 
+  it("matches a profile filter inside a composite Omni Token label", async () => {
+    const { log } = createLog();
+    await log.append(event({ profile: "admin+safe" }));
+
+    const result = await log.query({
+      from: Date.now() - 60_000,
+      to: Date.now() + 60_000,
+      profile: "safe",
+      offset: 0,
+      limit: 100,
+    });
+    expect(result.total).toBe(1);
+  });
+
   it("filters MCP and CLI sources and treats legacy records as MCP", async () => {
     const { log, directory } = createLog();
     const ts = new Date().toISOString();

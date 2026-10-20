@@ -22,7 +22,7 @@ export interface SecretInputProps
  */
 export const SecretInput = React.forwardRef<HTMLInputElement, SecretInputProps>(
   (
-    { value, onValueChange, revealLabel = "value", className, onFocus, onPointerDown, ...props },
+    { value, onValueChange, revealLabel = "value", className, onBlur, onFocus, onPointerDown, ...props },
     forwardedRef,
   ) => {
     const [revealed, setRevealed] = React.useState(false);
@@ -54,6 +54,10 @@ export const SecretInput = React.forwardRef<HTMLInputElement, SecretInputProps>(
           onFocus={(event) => {
             unlock();
             onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setRevealed(false);
+            onBlur?.(event);
           }}
           onChange={(event) => onValueChange(event.target.value)}
           className={cn("pr-10", className)}

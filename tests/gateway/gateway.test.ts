@@ -188,6 +188,71 @@ describe("Gateway", () => {
       expect(toolNames).toContain("github__list_issues");
     });
 
+    it("applies global disables after combining profile privileges", async () => {
+      const policyConfig = makeConfig();
+      policyConfig.port = 6399;
+      policyConfig.servers.filesystem!.disabledTools = ["read_file"];
+      policyConfig.profiles.default = {
+        allow: ["filesystem"],
+        denyTools: { filesystem: ["write_file"] },
+      };
+      policyConfig.tokens.cursor = {
+        profiles: ["default", "admin"],
+        disabled: false,
+      };
+      gateway.updateConfig(policyConfig);
+
+      try {
+        const limitedRes = await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": authHeader("default") },
+          body: JSON.stringify({ jsonrpc: "2.0", id: "policy-1", method: "tools/list" }),
+        });
+        const limited = await limitedRes.json() as any;
+        expect(limited.result.tools).toEqual([]);
+
+        const combinedRes = await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": authHeader("cursor") },
+          body: JSON.stringify({ jsonrpc: "2.0", id: "policy-2", method: "tools/list" }),
+        });
+        const combined = await combinedRes.json() as any;
+        const names = combined.result.tools.map((tool: any) => tool.name);
+        expect(names).toContain("filesystem__write_file");
+        expect(names).not.toContain("filesystem__read_file");
+
+        const globallyBlockedRes = await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": authHeader("cursor") },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "policy-3",
+            method: "tools/call",
+            params: { name: "filesystem__read_file", arguments: {} },
+          }),
+        });
+        const globallyBlocked = await globallyBlockedRes.json() as any;
+        expect(globallyBlocked.error.code).toBe(-32601);
+
+        const profileBlockedRes = await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": authHeader("default") },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "policy-4",
+            method: "tools/call",
+            params: { name: "filesystem__write_file", arguments: {} },
+          }),
+        });
+        const profileBlocked = await profileBlockedRes.json() as any;
+        expect(profileBlocked.error.code).toBe(-32601);
+      } finally {
+        const original = makeConfig();
+        original.port = 6399;
+        gateway.updateConfig(original);
+      }
+    });
+
     it("tools/call routes to correct upstream server", async () => {
       const res = await fetch(`${baseUrl}/mcp`, {
         method: "POST",
