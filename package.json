@@ -1,6 +1,6 @@
 {
   "name": "omni-mcp-manager",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "One proxy. All your MCP servers. Every IDE.",
   "type": "module",
   "main": "./dist/index.js",

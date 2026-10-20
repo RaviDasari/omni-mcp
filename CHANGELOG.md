@@ -1,3 +1,11 @@
+# [1.4.0](https://github.com/RaviDasari/omni-mcp/compare/v1.3.0...v1.4.0) (2026-10-20)
+
+
+### Features
+
+* add TOON output for CLI and surface config issues in gateway and web UI ([7d93138](https://github.com/RaviDasari/omni-mcp/commit/7d93138f2d2e50787a65f2ff7542e12c35b32d44))
+* replace managed secrets with variables and add tool policies and tokens ([a1a9962](https://github.com/RaviDasari/omni-mcp/commit/a1a996225f0b599af83b14c769aeed3c0ed5d997))
+
 # [1.3.0](https://github.com/RaviDasari/omni-mcp/compare/v1.2.1...v1.3.0) (2026-08-24)
 
 
