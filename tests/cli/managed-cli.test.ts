@@ -127,6 +127,49 @@ describe("managed CLI execution", () => {
     delete process.env.OMNI_MCP_CLI_USAGE_FILE;
   });
 
+  describe("TOON output", () => {
+    const payload = Array.from({ length: 5 }, (_, i) => ({ id: i + 1, name: `user${i}` }));
+    const jsonText = JSON.stringify(payload);
+
+    function stubGateway(): void {
+      vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+        if (String(url).endsWith("/tools")) {
+          return new Response(JSON.stringify({
+            server: "api",
+            tools: [{ name: "list_users", inputSchema: { type: "object", properties: {} } }],
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({
+          server: "api",
+          tool: "list_users",
+          durationMs: 1,
+          result: { content: [{ type: "text", text: jsonText }], isError: false },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }));
+    }
+
+    it("prints JSON text results as TOON by default", async () => {
+      stubGateway();
+      const code = await runManagedCli(["api", "list-users", "--gateway-url", "http://127.0.0.1:6317"]);
+      expect(code).toBe(0);
+      expect(stdout.length).toBeLessThan(jsonText.length);
+      expect(stdout).toContain("user0");
+      expect(stdout).not.toContain('"name"');
+    });
+
+    it("keeps the original text with --raw", async () => {
+      stubGateway();
+      await runManagedCli(["api", "list-users", "--raw", "--gateway-url", "http://127.0.0.1:6317"]);
+      expect(stdout).toBe(`${jsonText}\n`);
+    });
+
+    it("keeps the full MCP envelope with --json", async () => {
+      stubGateway();
+      await runManagedCli(["api", "list-users", "--json", "--gateway-url", "http://127.0.0.1:6317"]);
+      expect(JSON.parse(stdout).content[0].text).toBe(jsonText);
+    });
+  });
+
   it("emits compact JSON discovery without diagnostics on stdout", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       server: "github",

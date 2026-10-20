@@ -166,3 +166,17 @@ Status values: `"connecting"` | `"connected"` | `"error"` | `"disabled"`
   "defaultProfile": "default"
 }
 ```
+
+## Startup with unresolved Variables
+
+An unresolved `$NAME` reference (not in the process environment or managed Variables) inside an
+enabled server no longer stops the gateway. That server is **not started**, reports status
+`config-error` with the reasons in `/api/health` (`servers.<name>.issues`), and is skipped by the
+adapter manager. Unresolved references outside `servers`, and invalid config, remain fatal. A secret
+backend that cannot be read (for example a locked Keychain) is reported once under the top-level
+`issues` and blocks the servers that need it.
+
+Setting the Variable in the UI (or saving the config) re-resolves the config and starts the blocked
+server automatically. `omni-mcp start`/`restart` wait for the gateway to answer, then list every
+blocked server and its reasons, or print the log's last errors if it failed to start.
+`omni-mcp status` and the web UI (banner, Servers and Overview pages) show the same issues.

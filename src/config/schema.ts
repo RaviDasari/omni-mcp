@@ -8,6 +8,10 @@ const serverCliSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+const serverToonSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
 const toolNamesSchema = z
   .array(z.string().trim().min(1, "tool name must not be empty"))
   .transform((names) => [...new Set(names)]);
@@ -16,6 +20,7 @@ const stdioServerSchema = z.object({
   type: z.literal("stdio"),
   enabled: z.boolean().default(true),
   cli: serverCliSchema.default({ enabled: false }),
+  toon: serverToonSchema.default({ enabled: false }),
   disabledTools: toolNamesSchema.optional(),
   command: z.string().min(1, "command is required"),
   args: z.array(z.string()).default([]),
@@ -36,6 +41,7 @@ const httpServerSchema = z.object({
   type: z.literal("http"),
   enabled: z.boolean().default(true),
   cli: serverCliSchema.default({ enabled: false }),
+  toon: serverToonSchema.default({ enabled: false }),
   disabledTools: toolNamesSchema.optional(),
   url: z.string().url("url must be a valid URL"),
   auth: httpAuthSchema.optional(),

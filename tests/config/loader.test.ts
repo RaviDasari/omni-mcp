@@ -38,15 +38,46 @@ describe("Config Loader", () => {
       expect(result.config!.tokens.cursor.profile).toBe("admin");
     });
 
-    it("reports errors for unresolved secret references", () => {
+    it("blocks servers with unresolved references instead of failing the whole config", () => {
       const result = loadConfig(
         resolve(FIXTURES_DIR, "valid-config.json"),
         {}, // no env vars
       );
 
+      expect(result.errors).toEqual([]);
+      expect(result.config).toBeDefined();
+      const issues = Object.values(result.serverIssues).flat();
+      expect(issues.some((issue) => issue.includes("GITHUB_TOKEN"))).toBe(true);
+      expect(issues.some((issue) => issue.includes("PROD_DB_JWT"))).toBe(true);
+      expect(result.warnings.some((warning) => warning.message.includes("not started"))).toBe(true);
+    });
+
+    it("keeps unresolved references outside servers fatal", () => {
+      const result = resolveConfig({
+        host: "$MISSING_HOST",
+        servers: {},
+        profiles: { default: { allow: ["*"] } },
+        tokens: { default: { profile: "default" } },
+      }, { env: {} });
+
       expect(result.config).toBeUndefined();
-      expect(result.errors.some((error) => error.message.includes("GITHUB_TOKEN"))).toBe(true);
-      expect(result.errors.some((error) => error.message.includes("PROD_DB_JWT"))).toBe(true);
+      expect(result.errors.some((error) => error.message.includes("MISSING_HOST"))).toBe(true);
+    });
+
+    it("blocks servers, rather than failing, when the secret backend is unavailable", () => {
+      const result = resolveConfig({
+        secretBackend: { backend: "keychain", keychainService: "omni-mcp" },
+        servers: {
+          jira: { type: "stdio", command: "jira-mcp", env: { TOKEN: "$JIRA_TOKEN" } },
+        },
+        profiles: { default: { allow: ["*"] } },
+        tokens: { default: { profile: "default" } },
+      }, { env: {}, platform: "linux" });
+
+      expect(result.errors).toEqual([]);
+      expect(result.config).toBeDefined();
+      expect(result.globalIssues[0]).toContain('Secret backend "keychain" is unavailable');
+      expect(result.serverIssues.jira).toHaveLength(1);
     });
 
     it("downgrades unresolved references inside disabled servers to warnings", () => {

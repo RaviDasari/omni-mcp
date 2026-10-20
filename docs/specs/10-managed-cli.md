@@ -50,7 +50,9 @@ lossless fallback for complex schemas.
 - `--sort usage|recent|alpha|default`, `--top`, and `--compact` reduce discovery output.
 - Usage tracking stores only server/tool counts and last-used timestamps in
   `~/.omni-mcp/cli-usage.json`.
-- Human output prints MCP text content, then structured content as a fallback.
+- Human output prints MCP text content, then structured content as a fallback. JSON object/array
+  text is converted to TOON (see [14-toon-output.md](./14-toon-output.md)) when that is shorter.
+- `--raw` skips the CLI's own TOON conversion (a server with `toon.enabled` is already converted by the gateway).
 - `--json` writes the full MCP `CallToolResult` as valid JSON to stdout.
 - `--head <n>` truncates top-level array results.
 - Invalid arguments, gateway failures, and MCP `isError` results return a nonzero exit code.

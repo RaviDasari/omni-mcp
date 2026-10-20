@@ -10,10 +10,12 @@ export interface GatewayHealth {
   port: number;
   configPath?: string;
   defaultProfile: string;
+  issues?: string[];
   servers: Record<string, {
     enabled: boolean;
     cliEnabled: boolean;
     status: string;
+    issues?: string[];
     transport: string;
     restarts: number;
   }>;

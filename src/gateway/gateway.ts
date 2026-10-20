@@ -30,6 +30,7 @@ import type { ServerAdapter, Tool, ToolResult } from "../transport/index.js";
 import { Logger } from "../logger.js";
 import { VERSION } from "../version.js";
 import { buildIdeSnippets } from "../ide/snippets.js";
+import { toonifyResult } from "../toon.js";
 import {
   TrafficLog,
   type TrafficLogEvent,
@@ -79,6 +80,9 @@ export interface GatewayOptions {
   uiDir?: string;
   version?: string;
   trafficLogDir?: string;
+  /** Enabled servers that were not started, keyed by name, with the reasons. */
+  serverIssues?: Record<string, string[]>;
+  globalIssues?: string[];
   secretStoreOptions?: SecretStoreOptions;
   variableStoreOptions?: VariableStoreOptions;
   onSaveConfig?: (next: OmniMcpConfig) => Promise<OmniMcpConfig | void>;
@@ -97,6 +101,8 @@ export class Gateway {
   private uiDir?: string;
   private version: string;
   private trafficLog: TrafficLog;
+  private serverIssues: Record<string, string[]>;
+  private globalIssues: string[];
   private secretStoreOptions: SecretStoreOptions;
   private variableStoreOptions: VariableStoreOptions;
   private onSaveConfig?: (next: OmniMcpConfig) => Promise<OmniMcpConfig | void>;
@@ -110,6 +116,8 @@ export class Gateway {
     this.uiDir = options.uiDir;
     this.version = options.version ?? VERSION;
     this.trafficLog = new TrafficLog(options.config.trafficLog, options.trafficLogDir);
+    this.serverIssues = options.serverIssues ?? {};
+    this.globalIssues = options.globalIssues ?? [];
     this.secretStoreOptions = options.secretStoreOptions ?? {};
     this.variableStoreOptions = options.variableStoreOptions ?? {};
     this.onSaveConfig = options.onSaveConfig;
@@ -160,9 +168,15 @@ export class Gateway {
     return Math.floor((Date.now() - this.startTime) / 1000);
   }
 
-  updateConfig(config: OmniMcpConfig, rawConfig: OmniMcpConfig = config): void {
+  updateConfig(
+    config: OmniMcpConfig,
+    rawConfig: OmniMcpConfig = config,
+    issues: { serverIssues?: Record<string, string[]>; globalIssues?: string[] } = {},
+  ): void {
     this.config = config;
     this.rawConfig = rawConfig;
+    this.serverIssues = issues.serverIssues ?? {};
+    this.globalIssues = issues.globalIssues ?? [];
     this.trafficLog.updateConfig(config.trafficLog);
   }
 
@@ -209,10 +223,13 @@ export class Gateway {
     for (const [name, serverConfig] of Object.entries(this.config.servers)) {
       const adapter = this.adapters.get(name);
       const enabled = serverConfig.enabled !== false;
+      const issues = enabled ? this.serverIssues[name] : undefined;
       servers[name] = {
         enabled,
         cliEnabled: serverConfig.cli?.enabled === true,
-        status: enabled ? (adapter?.status ?? "error") : "disabled",
+        toonEnabled: serverConfig.toon?.enabled === true,
+        status: !enabled ? "disabled" : issues ? "config-error" : (adapter?.status ?? "error"),
+        ...(issues ? { issues } : {}),
         transport: serverConfig.type,
         restarts: adapter?.restarts ?? 0,
       };
@@ -227,6 +244,7 @@ export class Gateway {
       configPath: this.configPath,
       defaultProfile: this.config.defaultProfile,
       servers,
+      ...(this.globalIssues.length > 0 ? { issues: this.globalIssues } : {}),
     };
   }
 
@@ -267,6 +285,7 @@ export class Gateway {
     const cliServerToolsMatch = path.match(/^\/api\/cli\/servers\/([^/]+)\/tools$/);
     const cliServerToolCallMatch = path.match(/^\/api\/cli\/servers\/([^/]+)\/tools\/call$/);
     const serverCliEnabledMatch = path.match(/^\/api\/servers\/([^/]+)\/cli-enabled$/);
+    const serverToonEnabledMatch = path.match(/^\/api\/servers\/([^/]+)\/toon-enabled$/);
     const serverEnabledMatch = path.match(/^\/api\/servers\/([^/]+)\/enabled$/);
     const serverMatch = path.match(/^\/api\/servers\/([^/]+)$/);
     const profileMatch = path.match(/^\/api\/profiles\/([^/]+)$/);
@@ -543,7 +562,9 @@ export class Gateway {
               transport: server.type,
               enabled: server.enabled !== false,
               cliEnabled: true,
-              status: server.enabled === false ? "disabled" : (adapter?.status ?? "error"),
+              status: server.enabled === false
+                ? "disabled"
+                : this.serverIssues[name] ? "config-error" : (adapter?.status ?? "error"),
               toolCount: adapter?.status === "connected" ? undefined : 0,
             };
           });
@@ -630,7 +651,7 @@ export class Gateway {
             server: name,
             tool: toolName,
             durationMs: Date.now() - startedAt,
-            result,
+            result: this.presentResult(name, result),
           });
         } catch (err) {
           await logCliCall("error");
@@ -705,7 +726,7 @@ export class Gateway {
             server: name,
             tool: body.tool,
             durationMs: Date.now() - startedAt,
-            result,
+            result: this.presentResult(name, result),
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Unknown error";
@@ -771,6 +792,27 @@ export class Gateway {
           return;
         }
         next.servers[name]!.cli = { enabled: body.enabled };
+        await this.saveIncomingConfig(next);
+        json(res, 200, {
+          config: redactConfig(this.rawConfig),
+          health: this.healthPayload(),
+        });
+        return;
+      }
+
+      if (serverToonEnabledMatch && method === "PUT") {
+        const name = decodeURIComponent(serverToonEnabledMatch[1]!);
+        const body = (await readJson(req)) as { enabled?: unknown };
+        const next = structuredClone(this.rawConfig);
+        if (!(name in next.servers)) {
+          json(res, 404, { error: `Unknown server "${name}"` });
+          return;
+        }
+        if (typeof body.enabled !== "boolean") {
+          json(res, 400, { error: "Validation failed: enabled must be a boolean" });
+          return;
+        }
+        next.servers[name]!.toon = { enabled: body.enabled };
         await this.saveIncomingConfig(next);
         json(res, 200, {
           config: redactConfig(this.rawConfig),
@@ -1053,6 +1095,10 @@ export class Gateway {
     }
     if (config.enabled === false) {
       return { status: 404, error: `Server "${name}" is disabled` };
+    }
+    const blocked = this.serverIssues[name];
+    if (blocked) {
+      return { status: 409, error: `Server "${name}" was not started: ${blocked.join("; ")}` };
     }
     const adapter = this.adapters.get(name);
     if (!adapter) {
@@ -1353,6 +1399,14 @@ export class Gateway {
 
     // Check server exists
     const adapter = this.adapters.get(serverName);
+    if (!adapter && this.serverIssues[serverName]) {
+      return {
+        error: {
+          code: -32603,
+          message: `Server '${serverName}' was not started: ${this.serverIssues[serverName]!.join("; ")}`,
+        },
+      };
+    }
     if (!adapter) {
       return {
         error: { code: -32601, message: `Unknown server: "${serverName}"` },
@@ -1388,13 +1442,18 @@ export class Gateway {
     // Forward the call
     try {
       const result = await adapter.callTool(toolName, params.arguments ?? {});
-      return { result };
+      return { result: this.presentResult(serverName, result) };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       return {
         error: { code: -32603, message: `Tool call failed: ${message}` },
       };
     }
+  }
+
+  /** Applies the server's TOON setting so every surface returns the same output. */
+  private presentResult(serverName: string, result: ToolResult): ToolResult {
+    return this.config.servers[serverName]?.toon?.enabled ? toonifyResult(result) : result;
   }
 
   private isGloballyDisabled(serverName: string, toolName: string): boolean {

@@ -19,7 +19,7 @@ function formatUptime(seconds: number): string {
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (status === "connected") return "default";
-  if (status === "error") return "destructive";
+  if (status === "error" || status === "config-error") return "destructive";
   return "secondary";
 }
 
@@ -158,6 +158,9 @@ export default function OverviewPage() {
                       <TableCell>{info.transport}</TableCell>
                       <TableCell>
                         <Badge variant={statusVariant(info.status)}>{info.status}</Badge>
+                        {info.issues?.map((issue) => (
+                          <p key={issue} className="mt-1 max-w-md text-xs text-destructive">{issue}</p>
+                        ))}
                       </TableCell>
                       <TableCell>{info.restarts}</TableCell>
                       <TableCell className="text-right">

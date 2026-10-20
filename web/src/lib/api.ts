@@ -34,6 +34,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     throw new Error(await parseError(res));
   }
+  // A successful change may start or unblock servers; let health views refresh now.
+  if (init?.method && init.method !== "GET") {
+    window.dispatchEvent(new Event("omni:config-changed"));
+  }
   return (await res.json()) as T;
 }
 
@@ -71,6 +75,16 @@ export function setServerCliEnabled(
   enabled: boolean,
 ): Promise<{ config: OmniMcpConfig; health: HealthPayload }> {
   return request(`/api/servers/${encodeURIComponent(name)}/cli-enabled`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export function setServerToonEnabled(
+  name: string,
+  enabled: boolean,
+): Promise<{ config: OmniMcpConfig; health: HealthPayload }> {
+  return request(`/api/servers/${encodeURIComponent(name)}/toon-enabled`, {
     method: "PUT",
     body: JSON.stringify({ enabled }),
   });

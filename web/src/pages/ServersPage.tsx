@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Cable, Copy, LayoutGrid, List, Plus, Trash2, Wand2, Wrench } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useConfig } from "@/hooks/useConfig";
+import { useHealth } from "@/hooks/useHealth";
 import {
   applyProfileTools,
   deleteServer,
@@ -10,6 +11,7 @@ import {
   putServer,
   setProfileToolEnabled,
   setServerEnabled,
+  setServerToonEnabled,
   setServerToolEnabled,
 } from "@/lib/api";
 import type { HttpServerConfig, McpTool, ServerConfig, StdioServerConfig } from "@/lib/types";
@@ -47,6 +49,7 @@ interface ServerForm {
   authToken: string;
   enabled: boolean;
   cliEnabled: boolean;
+  toonEnabled: boolean;
   disabledTools: string[];
 }
 
@@ -60,6 +63,7 @@ const emptyForm: ServerForm = {
   authToken: "",
   enabled: true,
   cliEnabled: false,
+  toonEnabled: false,
   disabledTools: [],
 };
 
@@ -94,6 +98,7 @@ function serverToForm(name: string, server: ServerConfig): ServerForm {
       authToken: "",
       enabled: server.enabled !== false,
       cliEnabled: server.cli?.enabled === true,
+      toonEnabled: server.toon?.enabled === true,
       disabledTools: server.disabledTools ?? [],
     };
   }
@@ -108,6 +113,7 @@ function serverToForm(name: string, server: ServerConfig): ServerForm {
     authToken: server.auth?.token ?? "",
     enabled: server.enabled !== false,
     cliEnabled: server.cli?.enabled === true,
+    toonEnabled: server.toon?.enabled === true,
     disabledTools: server.disabledTools ?? [],
   };
 }
@@ -118,6 +124,7 @@ function toServerConfig(form: ServerForm): ServerConfig {
       type: "http",
       enabled: form.enabled,
       cli: { enabled: form.cliEnabled },
+      toon: { enabled: form.toonEnabled },
       disabledTools: form.disabledTools,
       url: form.url,
     };
@@ -130,6 +137,7 @@ function toServerConfig(form: ServerForm): ServerConfig {
     type: "stdio",
     enabled: form.enabled,
     cli: { enabled: form.cliEnabled },
+    toon: { enabled: form.toonEnabled },
     disabledTools: form.disabledTools,
     command: form.command,
     args: form.args.split(/\s+/).filter(Boolean),
@@ -173,6 +181,7 @@ function withInferredType(server: Record<string, unknown>): Record<string, unkno
 export default function ServersPage() {
   const { config, setConfig, error, loading } = useConfig();
   const [formError, setFormError] = useState<string | null>(null);
+  const { health } = useHealth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState<ServerForm>(emptyForm);
@@ -318,6 +327,19 @@ export default function ServersPage() {
       setConfig(result.config);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Failed to update server");
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const toggleToon = async (name: string, enabled: boolean) => {
+    setToggling(name);
+    setFormError(null);
+    try {
+      const result = await setServerToonEnabled(name, enabled);
+      setConfig(result.config);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to update TOON mode");
     } finally {
       setToggling(null);
     }
@@ -476,6 +498,9 @@ export default function ServersPage() {
                     {name}
                     <Badge variant="secondary">{server.type}</Badge>
                     {server.enabled === false ? <Badge variant="outline">disabled</Badge> : null}
+                    {health?.servers[name]?.status === "config-error" ? (
+                      <Badge variant="destructive">config error</Badge>
+                    ) : null}
                     {(server.disabledTools?.length ?? 0) > 0 ? (
                       <Badge variant="destructive">{server.disabledTools!.length} tools off</Badge>
                     ) : null}
@@ -485,6 +510,9 @@ export default function ServersPage() {
                       ? `${server.command} ${(server.args ?? []).join(" ")}`
                       : server.url}
                   </CardDescription>
+                  {health?.servers[name]?.issues?.map((issue) => (
+                    <p key={issue} className="mt-1 text-xs text-destructive">{issue}</p>
+                  ))}
                 </div>
                 {viewMode === "tiles" ? (
                   <Button variant="ghost" size="icon" onClick={() => void remove(name)} aria-label={`Remove ${name}`}>
@@ -514,6 +542,18 @@ export default function ServersPage() {
                       disabled={toggling === name}
                       onCheckedChange={(enabled) => void toggleServer(name, enabled)}
                       aria-label={`${server.enabled === false ? "Enable" : "Disable"} ${name} globally`}
+                    />
+                  </label>
+                  <label
+                    className="flex items-center gap-2 text-xs text-muted-foreground"
+                    title="Return JSON tool results as TOON to save tokens"
+                  >
+                    TOON
+                    <Switch
+                      checked={server.toon?.enabled === true}
+                      disabled={toggling === name}
+                      onCheckedChange={(enabled) => void toggleToon(name, enabled)}
+                      aria-label={`${server.toon?.enabled === true ? "Disable" : "Enable"} TOON output for ${name}`}
                     />
                   </label>
                   <Button variant="outline" size="sm" asChild>

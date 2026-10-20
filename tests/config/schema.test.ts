@@ -31,6 +31,7 @@ describe("Config Schema", () => {
           maxBytes: 5242880,
         });
         expect(result.data.servers.filesystem.cli).toEqual({ enabled: false });
+        expect(result.data.servers.filesystem.toon).toEqual({ enabled: false });
       }
     });
 

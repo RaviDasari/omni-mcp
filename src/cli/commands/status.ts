@@ -78,11 +78,21 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
 
       if (enrichedServers) {
         process.stdout.write("Servers:\n");
-        process.stdout.write("  NAME            TYPE   STATUS     RESTARTS  TOOLS\n");
+        process.stdout.write("  NAME            TYPE   STATUS       RESTARTS  TOOLS\n");
         for (const [name, info] of Object.entries(enrichedServers)) {
           process.stdout.write(
-            `  ${name.padEnd(15)} ${info.transport.padEnd(6)} ${info.status.padEnd(10)} ${String(info.restarts ?? "—").padEnd(9)} ${info.toolCount}\n`,
+            `  ${name.padEnd(15)} ${info.transport.padEnd(6)} ${info.status.padEnd(12)} ${String(info.restarts ?? "—").padEnd(9)} ${info.toolCount}\n`,
           );
+        }
+        const blocked = Object.entries(enrichedServers).filter(([, info]) => info.issues?.length);
+        const global = health.issues ?? [];
+        if (blocked.length > 0 || global.length > 0) {
+          process.stdout.write("\nIssues:\n");
+          for (const issue of global) process.stdout.write(`  ${issue}\n`);
+          for (const [name, info] of blocked) {
+            for (const issue of info.issues!) process.stdout.write(`  ${name}: ${issue}\n`);
+          }
+          process.stdout.write(`Fix in the UI: ${payload.address}/variables\n`);
         }
       }
     }

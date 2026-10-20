@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { DEFAULT_CONFIG_PATH } from "./config-path.js";
 import { runInstallSkill } from "./skill-installer.js";
 import type { Tool, ToolResult } from "../transport/types.js";
+import { encodeValue, toToon } from "../toon.js";
 import { GatewayClient, gatewayUrlFromConfig } from "./http-client.js";
 
 export interface ParamDef {
@@ -58,6 +59,7 @@ const BUILTIN_OPTIONS = new Set([
   "sort",
   "head",
   "json",
+  "raw",
   "pretty",
   "stdin",
   "args-json",
@@ -272,6 +274,7 @@ interface ParsedCli {
   sort: "usage" | "recent" | "alpha" | "default";
   head?: number;
   json: boolean;
+  raw: boolean;
   pretty: boolean;
   help: boolean;
 }
@@ -284,6 +287,7 @@ function parseGlobalArgs(argv: string[]): ParsedCli {
     compact: false,
     sort: "default",
     json: false,
+    raw: false,
     pretty: false,
     help: false,
   };
@@ -327,6 +331,7 @@ function parseGlobalArgs(argv: string[]): ParsedCli {
       result.sort = value as ParsedCli["sort"];
     } else if (name === "head") result.head = positiveInteger(takeValue(), "head");
     else if (name === "json") result.json = true;
+    else if (name === "raw") result.raw = true;
     else if (name === "pretty") result.pretty = true;
     else if (name === "help") result.help = true;
     else result.toolArgs.push(token);
@@ -365,7 +370,8 @@ function printCliHelp(): void {
     "Options:\n" +
     "  --gateway-url <url>  Override the running gateway URL\n" +
     "  --config <path>      Config used to discover the gateway port\n" +
-    "  --json               Emit valid JSON\n" +
+    "  --json               Emit the full MCP result as JSON\n" +
+    "  --raw                Print text results unchanged (default converts JSON to TOON)\n" +
     "  --head <n>           Limit top-level array results\n",
   );
 }
@@ -419,6 +425,7 @@ function printToolHelp(server: string, command: CommandDef): void {
   process.stdout.write("  --args-json <json>\tSupply a complete JSON argument object\n");
   process.stdout.write("  --stdin\tRead a complete JSON argument object from stdin\n");
   process.stdout.write("  --json\tPrint the full MCP result as JSON\n");
+  process.stdout.write("  --raw\tPrint text results unchanged instead of converting JSON to TOON\n");
 }
 
 function printToolResult(result: ToolResult, options: ParsedCli): void {
@@ -430,14 +437,16 @@ function printToolResult(result: ToolResult, options: ParsedCli): void {
   }
   const text = output.content
     .filter((item) => item.type === "text" && typeof item.text === "string")
-    .map((item) => item.text)
+    .map((item) => (options.raw ? item.text : (toToon(item.text as string) ?? item.text)))
     .join("\n");
   if (text) {
     process.stdout.write(`${text}\n`);
     return;
   }
   if (output.structuredContent !== undefined) {
-    process.stdout.write(`${JSON.stringify(output.structuredContent, null, 2)}\n`);
+    process.stdout.write(
+      `${options.raw ? JSON.stringify(output.structuredContent, null, 2) : encodeValue(output.structuredContent)}\n`,
+    );
     return;
   }
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);

@@ -38,17 +38,17 @@ enabled for CLI access. The local omni-mcp gateway must be running.
 
    Tool commands and flags are generated at runtime. Never assume a schema from memory.
 
-4. Invoke with machine-readable output:
+4. Invoke the tool (JSON results are printed as compact TOON by default to save tokens):
 
    ```bash
-   omni-mcp cli <server> <tool> --required-flag value --json
+   omni-mcp cli <server> <tool> --required-flag value
    ```
 
    For nested or ambiguous arguments, use one of:
 
    ```bash
-   omni-mcp cli <server> <tool> --args-json '{"key":"value"}' --json
-   printf '%s' '{"key":"value"}' | omni-mcp cli <server> <tool> --stdin --json
+   omni-mcp cli <server> <tool> --args-json '{"key":"value"}'
+   printf '%s' '{"key":"value"}' | omni-mcp cli <server> <tool> --stdin
    ```
 
 5. Treat a nonzero exit code or an MCP result with `"isError": true` as failure. Report the
@@ -56,7 +56,9 @@ enabled for CLI access. The local omni-mcp gateway must be running.
 
 ## Output and safety
 
-- Prefer `--json` for calls and parse stdout as one JSON value. Diagnostics go to stderr.
+- Call output is TOON (a compact, indented, tabular encoding of JSON), which you can read directly.
+  Use `--raw` for the unconverted text, or `--json` only when you must parse the full MCP result
+  envelope as one JSON value. Diagnostics go to stderr.
 - Use `--head <n>` only when truncating an array will not hide information needed for correctness.
 - `--compact`, `--search`, and `--top` are discovery optimizations, not invocation flags.
 - CLI access bypasses omni-mcp profiles but remains local and opt-in per server.

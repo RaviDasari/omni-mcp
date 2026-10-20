@@ -2,6 +2,7 @@ export interface StdioServerConfig {
   type: "stdio";
   enabled?: boolean;
   cli?: { enabled?: boolean };
+  toon?: { enabled?: boolean };
   disabledTools?: string[];
   command: string;
   args?: string[];
@@ -17,6 +18,7 @@ export interface HttpServerConfig {
   type: "http";
   enabled?: boolean;
   cli?: { enabled?: boolean };
+  toon?: { enabled?: boolean };
   disabledTools?: string[];
   url: string;
   auth?: { type: "jwt"; token: string };
@@ -92,12 +94,17 @@ export interface HealthPayload {
   port: number;
   configPath?: string;
   defaultProfile: string;
+  /** Problems not tied to one server, e.g. an unavailable secret backend. */
+  issues?: string[];
   servers: Record<
     string,
     {
       enabled: boolean;
       cliEnabled: boolean;
+      toonEnabled: boolean;
       status: string;
+      /** Why the server was not started (status "config-error"). */
+      issues?: string[];
       transport: string;
       restarts: number;
     }

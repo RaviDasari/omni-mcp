@@ -199,7 +199,7 @@ Give your CI bot its own token with access only to deployment tools:
 | `omni-mcp start` | Start the proxy gateway |
 | `omni-mcp stop` | Graceful shutdown |
 | `omni-mcp status` | Show server health, active connections, profiles |
-| `omni-mcp server …` | List/show/add/update/remove/clone and toggle servers or CLI opt-in |
+| `omni-mcp server …` | List/show/add/update/remove/clone and toggle servers, CLI opt-in, or TOON output (`toon-enable`/`toon-disable`) |
 | `omni-mcp profile …` | List/show/create/update/delete profiles |
 | `omni-mcp token …` | List/show/create/update/delete and enable/disable tokens |
 | `omni-mcp config …` | Show/apply/validate/reload config |
@@ -246,6 +246,7 @@ Full specs are available in [`docs/specs/`](./docs/specs/):
 - [Managed Variables](./docs/specs/11-managed-variables.md)
 - [CLI parity and release contract](./docs/specs/12-cli-parity-release.md)
 - [Tool policies and Tokens](./docs/specs/13-tool-policies-and-tokens.md)
+- [TOON output](./docs/specs/14-toon-output.md)
 
 ## Contributing
 

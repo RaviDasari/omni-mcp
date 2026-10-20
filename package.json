@@ -63,6 +63,7 @@
   },
   "homepage": "https://github.com/RaviDasari/omni-mcp#readme",
   "dependencies": {
+    "@toon-format/toon": "4.4.0",
     "commander": "^15.0.0",
     "zod": "^4.4.3"
   },

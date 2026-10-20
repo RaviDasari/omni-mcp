@@ -69,6 +69,9 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
       // Optional. Expose this server through `omni-mcp cli`. Default: false.
       "cli": { "enabled": false },
 
+      // Optional. Return JSON text results of tool calls as TOON to save tokens. Default: false.
+      "toon": { "enabled": false },
+
       // Optional global kill-switch. Upstream tool names, not namespaced names.
       "disabledTools": ["delete_file"],
 
@@ -107,6 +110,9 @@ Each key is a unique server name used throughout the config (e.g., in profiles a
 
       // Optional. Expose this server through `omni-mcp cli`. Default: false.
       "cli": { "enabled": false },
+
+      // Optional. Return JSON text results of tool calls as TOON to save tokens. Default: false.
+      "toon": { "enabled": false },
 
       // Required. Full base URL of the remote MCP server.
       "url": "https://internal.tools/mcp",

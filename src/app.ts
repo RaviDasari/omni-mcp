@@ -18,18 +18,23 @@ export interface StartAppOptions {
   configPath?: string;
   uiDir?: string;
   rawConfig?: OmniMcpConfig;
+  /** Enabled servers that must not start yet, keyed by name, with the reasons. */
+  serverIssues?: Record<string, string[]>;
+  globalIssues?: string[];
 }
 
 /**
  * Creates and initializes all server adapters from config.
+ * Servers named in `blocked` (unresolved Variables) are not created.
  */
 export async function createAdapters(
   config: OmniMcpConfig,
+  blocked: Record<string, string[]> = {},
 ): Promise<Map<string, ServerAdapter>> {
   const adapters = new Map<string, ServerAdapter>();
 
   for (const [name, serverConfig] of Object.entries(config.servers)) {
-    if (serverConfig.enabled === false) continue;
+    if (serverConfig.enabled === false || name in blocked) continue;
     adapters.set(name, createAdapter(name, serverConfig));
   }
 
@@ -85,6 +90,8 @@ export async function applyAdapterChanges(
   adapters: Map<string, ServerAdapter>,
   previous: OmniMcpConfig,
   next: OmniMcpConfig,
+  blocked: Record<string, string[]> = {},
+  previouslyBlocked: Record<string, string[]> = {},
 ): Promise<void> {
   const logger = new Logger("omni-mcp");
   const prevNames = new Set(Object.keys(previous.servers));
@@ -106,6 +113,7 @@ export async function applyAdapterChanges(
     const prevServer = previous.servers[name];
     const changed =
       !prevServer ||
+      name in previouslyBlocked !== name in blocked ||
       JSON.stringify(comparableServer(prevServer)) !==
         JSON.stringify(comparableServer(nextServer));
 
@@ -115,6 +123,11 @@ export async function applyAdapterChanges(
     if (existing) {
       await existing.disconnect().catch(() => undefined);
       adapters.delete(name);
+    }
+
+    if (name in blocked) {
+      logger.warn(`  ✗  ${name} — not started: ${blocked[name]!.join("; ")}`);
+      continue;
     }
 
     if (nextServer.enabled === false) {
@@ -145,19 +158,24 @@ export async function startApp(
   const tokenNames = Object.keys(config.tokens);
   logger.info(`Tokens registered: ${tokenNames.join(", ")} (${tokenNames.length} total)`);
 
-  const adapters = await createAdapters(config);
+  const serverIssues = options.serverIssues ?? {};
+  for (const [name, reasons] of Object.entries(serverIssues)) {
+    logger.warn(`  ✗  ${name.padEnd(15)} — not started: ${reasons.join("; ")}`);
+  }
+  const adapters = await createAdapters(config, serverIssues);
 
   logger.info("Initializing servers...");
   const { connected, failed } = await initializeAdapters(adapters);
 
   if (connected === 0 && adapters.size > 0) {
-    throw new Error("All servers failed to initialize");
+    logger.warn("No servers connected. The gateway stays up so the UI can be used to fix the config.");
   }
 
   if (failed > 0) {
     logger.warn(`${failed} server(s) failed to initialize. Partial functionality available.`);
   }
 
+  let currentIssues = serverIssues;
   const initialRawConfig = options.rawConfig ?? structuredClone(config);
   const context: AppContext = {
     config,
@@ -172,6 +190,8 @@ export async function startApp(
     rawConfig: initialRawConfig,
     adapters,
     configPath: options.configPath,
+    serverIssues,
+    globalIssues: options.globalIssues,
     uiDir: options.uiDir ?? resolveUiDir(),
     version: VERSION,
     onSaveConfig: async (rawNext) => {
@@ -184,10 +204,20 @@ export async function startApp(
       if (options.configPath) {
         writeConfig(options.configPath, resolved.rawConfig);
       }
-      await applyAdapterChanges(adapters, context.config, resolved.config);
+      await applyAdapterChanges(
+        adapters,
+        context.config,
+        resolved.config,
+        resolved.serverIssues,
+        currentIssues,
+      );
+      currentIssues = resolved.serverIssues;
       context.config = resolved.config;
       context.rawConfig = resolved.rawConfig;
-      gateway.updateConfig(resolved.config, resolved.rawConfig);
+      gateway.updateConfig(resolved.config, resolved.rawConfig, {
+        serverIssues: resolved.serverIssues,
+        globalIssues: resolved.globalIssues,
+      });
       return resolved.config;
     },
     onReloadFromDisk: async () => {
@@ -198,10 +228,20 @@ export async function startApp(
       if (!reloaded.config || !reloaded.rawConfig) {
         throw new Error(reloaded.errors.map((e) => e.message).join("; ") || "Reload failed");
       }
-      await applyAdapterChanges(adapters, context.config, reloaded.config);
+      await applyAdapterChanges(
+        adapters,
+        context.config,
+        reloaded.config,
+        reloaded.serverIssues,
+        currentIssues,
+      );
+      currentIssues = reloaded.serverIssues;
       context.config = reloaded.config;
       context.rawConfig = reloaded.rawConfig;
-      gateway.updateConfig(reloaded.config, reloaded.rawConfig);
+      gateway.updateConfig(reloaded.config, reloaded.rawConfig, {
+        serverIssues: reloaded.serverIssues,
+        globalIssues: reloaded.globalIssues,
+      });
       return { warnings: reloaded.warnings.map((w) => w.message) };
     },
   });
@@ -240,6 +280,6 @@ function getAdapterType(adapter: ServerAdapter): string {
 }
 
 function comparableServer(server: ServerConfig): Record<string, unknown> {
-  const { enabled, cli: _cli, disabledTools: _disabledTools, ...rest } = server;
+  const { enabled, cli: _cli, toon: _toon, disabledTools: _disabledTools, ...rest } = server;
   return { enabled: enabled !== false, ...rest };
 }

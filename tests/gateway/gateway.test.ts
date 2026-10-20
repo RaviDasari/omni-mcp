@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -269,6 +269,45 @@ describe("Gateway", () => {
       const body = await res.json() as any;
       expect(body.result.content[0].text).toContain("read_file");
       expect(body.result.content[0].text).toContain("/test.txt");
+    });
+
+    it("tools/call returns JSON text as TOON only when the server enables it", async () => {
+      const rows = Array.from({ length: 5 }, (_, i) => ({ id: i + 1, name: `user${i}` }));
+      const jsonText = JSON.stringify(rows);
+      const spy = vi.spyOn(fsAdapter, "callTool").mockResolvedValue({
+        content: [{ type: "text", text: jsonText }],
+      });
+      const call = async () => {
+        const res = await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": authHeader("cursor") },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "toon-1",
+            method: "tools/call",
+            params: { name: "filesystem__read_file", arguments: {} },
+          }),
+        });
+        return (await res.json() as any).result.content[0].text as string;
+      };
+
+      try {
+        expect(await call()).toBe(jsonText);
+
+        const toonConfig = makeConfig();
+        toonConfig.port = 6399;
+        toonConfig.servers.filesystem!.toon = { enabled: true };
+        gateway.updateConfig(toonConfig);
+        const converted = await call();
+        expect(converted).not.toBe(jsonText);
+        expect(converted.length).toBeLessThan(jsonText.length);
+        expect(converted).toContain("user0");
+      } finally {
+        const original = makeConfig();
+        original.port = 6399;
+        gateway.updateConfig(original);
+        spy.mockRestore();
+      }
     });
 
     it("tools/call denies access to server not in profile", async () => {

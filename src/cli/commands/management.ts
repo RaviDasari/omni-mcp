@@ -96,13 +96,16 @@ function registerServerCommands(program: Command): void {
     ["disable", "enabled", false],
     ["cli-enable", "cli-enabled", true],
     ["cli-disable", "cli-enabled", false],
+    ["toon-enable", "toon-enabled", true],
+    ["toon-disable", "toon-enabled", false],
   ] as const) {
     common(server.command(`${commandName} <name>`)).action(safe((name: string, options: CommonOptions) =>
       mutateConfig(options, `/api/servers/${encodeURIComponent(name)}/${field}`, "PUT", { enabled }, (raw) => {
         const target = raw.servers?.[name];
         if (!target) throw new Error(`Unknown server "${name}"`);
         if (field === "enabled") target.enabled = enabled;
-        else target.cli = { enabled };
+        else if (field === "cli-enabled") target.cli = { enabled };
+        else target.toon = { enabled };
       })));
   }
   for (const [commandName, enabled] of [["enable-tool", true], ["disable-tool", false]] as const) {
